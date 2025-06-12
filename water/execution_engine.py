@@ -57,6 +57,7 @@ class ExecutionEngine:
             flow_id=flow_id,
             flow_metadata=flow_metadata or {}
         )
+        context.initial_input = input_data
         
         data: OutputData = input_data
         

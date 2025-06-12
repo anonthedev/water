@@ -39,6 +39,7 @@ class ExecutionContext:
         self.step_number = step_number
         self.attempt_number = attempt_number
         self.flow_metadata = flow_metadata or {}
+        self.initial_input = None
         
         # Timing information
         self.execution_start_time = datetime.utcnow()

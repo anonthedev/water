@@ -763,3 +763,23 @@ async def test_loop_then_sequential():
     
     # The result should be 10 (2 -> 3 -> 4 -> 5, then 5 * 2 = 10)
     assert result["value"] == 10
+
+@pytest.mark.asyncio
+async def test_original_input_data_available_in_context():
+    def access_original_input(params, context):
+        assert params["input_data"] == {"value": 42}, "Original input data not found in params"
+        return {"value": params["input_data"]["value"] + 10}
+
+    task = create_task(
+        id="check_input",
+        description="Check access to original input in context",
+        input_schema=NumberInput,
+        output_schema=NumberOutput,
+        execute=access_original_input
+    )
+
+    flow = Flow(id="test_input_context", description="Test input data in context")
+    flow.then(task).register()
+
+    result = await flow.run({"value": 42})
+    assert result["value"] == 52

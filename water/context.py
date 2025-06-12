@@ -20,7 +20,8 @@ class ExecutionContext:
         task_id: Optional[str] = None,
         step_number: int = 0,
         attempt_number: int = 1,
-        flow_metadata: Optional[Dict[str, Any]] = None
+        flow_metadata: Optional[Dict[str, Any]] = None,
+        input_data: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Initialize execution context.
@@ -30,8 +31,8 @@ class ExecutionContext:
             execution_id: Unique identifier for this execution instance
             task_id: Current task identifier
             step_number: Current step number in the execution
-            attempt_number: Attempt number for retry scenarios
             flow_metadata: Metadata associated with the flow
+            input_data: Initial input data for the flow execution
         """
         self.flow_id = flow_id
         self.execution_id = execution_id or f"exec_{uuid.uuid4().hex[:8]}"
@@ -39,7 +40,7 @@ class ExecutionContext:
         self.step_number = step_number
         self.attempt_number = attempt_number
         self.flow_metadata = flow_metadata or {}
-        self.initial_input = None
+        self.initial_input = input_data or {}
         
         # Timing information
         self.execution_start_time = datetime.utcnow()

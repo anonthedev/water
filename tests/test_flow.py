@@ -767,8 +767,9 @@ async def test_loop_then_sequential():
 @pytest.mark.asyncio
 async def test_original_input_data_available_in_context():
     def access_original_input(params, context):
-        assert params["input_data"] == {"value": 42}, "Original input data not found in params"
-        return {"value": params["input_data"]["value"] + 10}
+        original_input = context.initial_input
+        assert original_input == {"value": 42}, "Original input data not found in context"
+        return {"value": original_input["value"] + 10}
 
     task = create_task(
         id="check_input",
@@ -783,3 +784,4 @@ async def test_original_input_data_available_in_context():
 
     result = await flow.run({"value": 42})
     assert result["value"] == 52
+

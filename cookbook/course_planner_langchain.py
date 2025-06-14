@@ -249,18 +249,6 @@ async def main():
         print(f"\n✅ Course plan saved to {md_path}")
     except Exception as e:
         print(f"⚠️  Failed to write markdown file: {e}")
-    # print(result)
-
-    # print("\n📘 Course Outline\n" + "-" * 80)
-    # print(result["projects_md"])
-
-    # print("\n📚 Expanded Lessons\n" + "-" * 80)
-    # for lesson, content in result["expand_lessons"]["content"].items():
-    #     print(f"\n## {lesson}\n")
-    #     print(content)
-
-    # print("\n🎓 Capstone Projects\n" + "-" * 80)
-    # print(result["projects"]["projects_md"])
 
 
 if __name__ == "__main__":

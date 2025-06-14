@@ -20,6 +20,7 @@ llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
 
 # === 2. Tool: Course Outliner ===
 def course_outline_tool(course: str) -> str:
+    print(f"\n🔧 [CourseOutliner] Generating outline for: {course}")
     prompt = f"""You are an expert curriculum designer. Create a structured course outline with 5-8 lessons for the course: '{course}'. Each lesson should have a title and a short description."""
     
     structured_llm = llm.with_structured_output(CourseOutlineSchema)
@@ -119,7 +120,7 @@ class ExpandedLessons(BaseModel):
 
 class ProjectSuggestions(BaseModel):
     projects_md: str
-    outline: Any | None = None  # include previous task outputs
+    outline: Any | None = None
     expand_lessons: Any | None = None
 
 # === 7. Task Functions ===
@@ -132,13 +133,13 @@ def run_course_outline(params: Dict[str, Any], context) -> CourseOutline:
 import json
 
 def run_lesson_expansion(params: Dict[str, Any], context) -> ExpandedLessons:
+    print("\n🔧 [LessonExpander] Starting lesson expansions ...")
     course = params["input_data"]["topic"]
     outline_json = params["input_data"]["outline"]
 
     try:
-        # outline_json is now expected to be a string like '{"lessons": [{"title": "...", "description": "..."}, ...]}'
         parsed_outline = json.loads(outline_json)
-        lessons = parsed_outline.get("lessons") # Get the list of lesson dicts
+        lessons = parsed_outline.get("lessons")
 
         if lessons is None:
             print(f"ERROR: 'lessons' key not found in parsed_outline. Received: {outline_json}")
@@ -146,7 +147,6 @@ def run_lesson_expansion(params: Dict[str, Any], context) -> ExpandedLessons:
         if not isinstance(lessons, list):
             print(f"ERROR: 'lessons' key is not a list in parsed_outline. Received: {outline_json}")
             return {"content": {"error": "Invalid structure: 'lessons' is not a list"}, "topic": course}
-        # It's okay if lessons is an empty list, the loop below will simply not run.
 
     except json.JSONDecodeError as e:
         print(f"ERROR: JSONDecodeError in run_lesson_expansion: {e}. Received outline_json: {outline_json}")
@@ -155,6 +155,7 @@ def run_lesson_expansion(params: Dict[str, Any], context) -> ExpandedLessons:
     expanded = {}
     for lesson in lessons:
         lesson_title = lesson["title"]
+        print(f"   📚 Expanding '{lesson_title}' ...")
         prompt = f"lesson: {lesson_title}, course: {course}"
         result = lesson_expander_tool(prompt)
         expanded[lesson_title] = result

@@ -13,6 +13,7 @@ from .execution_engine import FlowPausedError, FlowStoppedError
 from .hooks import HookManager
 from .events import EventEmitter, FlowEvent, EventSubscription
 from .rate_limiter import RateLimiter, get_rate_limiter
+from .human_task import create_human_task, HumanInputManager, HumanInputRequired
 
 __all__ = [
     "Flow",
@@ -33,4 +34,7 @@ __all__ = [
     "EventSubscription",
     "RateLimiter",
     "get_rate_limiter",
+    "create_human_task",
+    "HumanInputManager",
+    "HumanInputRequired",
 ]

@@ -61,6 +61,8 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         checkpoint: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
+        services: Optional[Dict[str, Any]] = None,
     ) -> OutputData:
         """
         Execute a complete flow execution graph.
@@ -72,6 +74,7 @@ class ExecutionEngine:
             flow_metadata: Optional metadata for the flow
             storage: Optional storage backend for persistence and pause/resume
             resume_from: Optional dict with resume state (execution_id, node_index, data, context_state)
+            dlq: Optional dead letter queue for capturing failed task executions
 
         Returns:
             Final output data after all nodes are executed
@@ -95,6 +98,11 @@ class ExecutionEngine:
 
             data: OutputData = resume_from["data"]
             start_index = resume_from["node_index"]
+
+            # Register injected services on resumed context
+            if services:
+                for name, service in services.items():
+                    context.register_service(name, service)
         else:
             context = ExecutionContext(
                 flow_id=flow_id,
@@ -103,6 +111,11 @@ class ExecutionEngine:
             )
             data = input_data
             start_index = 0
+
+            # Register injected services on the context
+            if services:
+                for name, service in services.items():
+                    context.register_service(name, service)
 
             # Try to recover from a checkpoint (crash recovery)
             if checkpoint is not None:
@@ -163,7 +176,7 @@ class ExecutionEngine:
 
                 node = execution_graph[node_index]
                 data = await ExecutionEngine._execute_node(
-                    node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
+                    node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
                 )
 
                 # Save checkpoint after each successful node
@@ -210,6 +223,7 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         """
         Route execution to the appropriate node type handler.
@@ -232,7 +246,7 @@ class ExecutionEngine:
         if not handler:
             raise ValueError(f"Unhandled node type: {node_type}")
 
-        return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
+        return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
 
     @staticmethod
     async def _execute_task(
@@ -245,6 +259,7 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a single task, handling both sync and async functions.
@@ -458,6 +473,19 @@ class ExecutionEngine:
                     if telemetry and _telem_span is not None:
                         telemetry.record_error(_telem_span, last_error)
                         _telem_span_ctx.__exit__(type(last_error), last_error, last_error.__traceback__)
+                    # Push to dead letter queue if configured
+                    if dlq is not None:
+                        from water.dlq import DeadLetter
+                        letter = DeadLetter(
+                            task_id=task.id,
+                            flow_id=context.flow_id,
+                            execution_id=context.execution_id,
+                            input_data=data,
+                            error=str(last_error),
+                            error_type=type(last_error).__name__,
+                            attempts=max_attempts,
+                        )
+                        await dlq.push(letter)
                     raise last_error
 
     @staticmethod
@@ -471,6 +499,7 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         # Support conditional skip via 'when' key
         when = node.get("when")
@@ -481,13 +510,13 @@ class ExecutionEngine:
         fallback = node.get("fallback")
 
         try:
-            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
         except Exception:
             if fallback is not None:
                 logger.info(
                     f"Primary task '{task.id}' failed, running fallback task '{fallback.id}'"
                 )
-                return await ExecutionEngine._execute_task(fallback, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
+                return await ExecutionEngine._execute_task(fallback, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
             raise
 
     @staticmethod
@@ -501,11 +530,12 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         tasks = node["tasks"]
 
         async def execute_single_task(task):
-            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
 
         coroutines = [execute_single_task(task) for task in tasks]
         results: List[OutputData] = await asyncio.gather(*coroutines)
@@ -526,6 +556,7 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         branches = node["branches"]
 
@@ -534,7 +565,7 @@ class ExecutionEngine:
 
             if condition(data):
                 task = branch["task"]
-                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
+                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
 
         return data
 
@@ -549,6 +580,7 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         condition = node["condition"]
         task = node["task"]
@@ -593,7 +625,7 @@ class ExecutionEngine:
                     )
 
             current_data = await ExecutionEngine._execute_task(
-                task, current_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
+                task, current_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
             )
             iteration_count += 1
 
@@ -616,6 +648,7 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a task once per item in a list field, in parallel.
@@ -633,7 +666,7 @@ class ExecutionEngine:
         async def execute_for_item(item):
             item_data = {**data, over_key: item}
             return await ExecutionEngine._execute_task(
-                task, item_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
+                task, item_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
             )
 
         results = await asyncio.gather(*[execute_for_item(item) for item in items])
@@ -650,6 +683,7 @@ class ExecutionEngine:
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute tasks as a DAG with automatic parallelization.
@@ -701,7 +735,7 @@ class ExecutionEngine:
                 if dep_id in results:
                     task_data[f"_{dep_id}_output"] = results[dep_id]
             return await ExecutionEngine._execute_task(
-                task, task_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
+                task, task_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
             )
 
         # Process DAG level by level
@@ -741,6 +775,6 @@ class ExecutionEngine:
                         ready.append(dependent_id)
 
         if len(completed) != len(all_task_ids):
-            raise ValueError("DAG has circular dependencies — not all tasks completed")
+            raise ValueError("DAG has circular dependencies -- not all tasks completed")
 
         return results

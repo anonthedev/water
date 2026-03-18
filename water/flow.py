@@ -51,6 +51,8 @@ class Flow:
         self.telemetry: Optional[Any] = None
         self.checkpoint: Optional[Any] = None
         self.middleware: List[Any] = []
+        self.dlq: Optional[Any] = None
+        self._services: Dict[str, Any] = {}
 
     def _validate_registration_state(self) -> None:
         """Ensure flow is not registered when adding tasks."""
@@ -93,6 +95,23 @@ class Flow:
             Self for method chaining.
         """
         self.middleware.append(middleware)
+        return self
+
+    def inject(self, name: str, service: Any) -> 'Flow':
+        """
+        Register a shared service for dependency injection into tasks.
+
+        Injected services are available to all tasks via
+        ``context.get_service(name)`` during flow execution.
+
+        Args:
+            name: Unique name to identify the service
+            service: The service instance to inject
+
+        Returns:
+            Self for method chaining
+        """
+        self._services[name] = service
         return self
 
     def set_metadata(self, key: str, value: Any) -> 'Flow':
@@ -413,6 +432,8 @@ class Flow:
                 telemetry=self.telemetry,
                 checkpoint=self.checkpoint,
                 middleware=self.middleware if self.middleware else None,
+                dlq=self.dlq,
+                services=self._services if self._services else None,
             )
             await self.hooks.emit("on_flow_complete", flow_id=self.id, output_data=result)
             if self.events:

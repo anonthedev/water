@@ -49,7 +49,49 @@ class ExecutionContext:
         # Task outputs history
         self._task_outputs: Dict[str, OutputData] = {}
         self._step_history: List[Dict[str, Any]] = []
+
+        # Dependency injection services
+        self._services: Dict[str, Any] = {}
     
+    def register_service(self, name: str, service: Any) -> None:
+        """
+        Register a shared service for dependency injection.
+
+        Args:
+            name: Unique name to identify the service
+            service: The service instance to register
+        """
+        self._services[name] = service
+
+    def get_service(self, name: str) -> Any:
+        """
+        Retrieve a registered service by name.
+
+        Args:
+            name: Name of the service to retrieve
+
+        Returns:
+            The registered service instance
+
+        Raises:
+            KeyError: If no service is registered with the given name
+        """
+        if name not in self._services:
+            raise KeyError(f"Service '{name}' not found. Available services: {list(self._services.keys())}")
+        return self._services[name]
+
+    def has_service(self, name: str) -> bool:
+        """
+        Check whether a service is registered.
+
+        Args:
+            name: Name of the service to check
+
+        Returns:
+            True if the service is registered, False otherwise
+        """
+        return name in self._services
+
     def add_task_output(self, task_id: str, output: OutputData) -> None:
         """
         Record the output of a completed task.
@@ -128,9 +170,10 @@ class ExecutionContext:
             input_data=self.initial_input
         )
         
-        # Copy task outputs and history to child
+        # Copy task outputs, history, and services to child
         child_context._task_outputs = self._task_outputs.copy()
         child_context._step_history = self._step_history.copy()
+        child_context._services = self._services.copy()
         child_context.execution_start_time = self.execution_start_time
         
         return child_context

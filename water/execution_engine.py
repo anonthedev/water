@@ -273,6 +273,15 @@ class ExecutionEngine:
                 await storage.save_task_run(task_run)
 
             try:
+                # Validate input against schema if enabled
+                if getattr(task, "validate_schema", False) and hasattr(task, "input_schema"):
+                    try:
+                        task.input_schema(**data)
+                    except Exception as ve:
+                        raise ValueError(
+                            f"Task '{task.id}' input validation failed: {ve}"
+                        ) from ve
+
                 # Execute the task (with optional timeout)
                 if inspect.iscoroutinefunction(task.execute):
                     coro = task.execute(params, context)
@@ -289,6 +298,15 @@ class ExecutionEngine:
                         )
                     else:
                         result = task.execute(params, context)
+
+                # Validate output against schema if enabled
+                if getattr(task, "validate_schema", False) and hasattr(task, "output_schema"):
+                    try:
+                        task.output_schema(**result)
+                    except Exception as ve:
+                        raise ValueError(
+                            f"Task '{task.id}' output validation failed: {ve}"
+                        ) from ve
 
                 # Store the task result in context for future tasks to access
                 context.add_task_output(task.id, result)

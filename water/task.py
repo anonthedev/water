@@ -29,6 +29,7 @@ class Task:
         retry_delay: float = 0.0,
         retry_backoff: float = 1.0,
         timeout: Optional[float] = None,
+        validate_schema: bool = False,
     ) -> None:
         """
         Initialize a new Task.
@@ -43,6 +44,7 @@ class Task:
             retry_delay: Initial delay in seconds between retries
             retry_backoff: Multiplier applied to delay after each retry (1.0 = fixed, 2.0 = exponential)
             timeout: Optional timeout in seconds for task execution
+            validate_schema: If True, validate input/output against schemas at runtime
 
         Raises:
             WaterError: If schemas are not Pydantic BaseModel classes or execute is not callable
@@ -65,6 +67,7 @@ class Task:
         self.retry_delay = retry_delay
         self.retry_backoff = retry_backoff
         self.timeout = timeout
+        self.validate_schema = validate_schema
 
 
 def create_task(
@@ -77,6 +80,7 @@ def create_task(
     retry_delay: float = 0.0,
     retry_backoff: float = 1.0,
     timeout: Optional[float] = None,
+    validate_schema: bool = False,
 ) -> Task:
     """
     Factory function to create a Task instance.
@@ -91,4 +95,5 @@ def create_task(
         retry_delay=retry_delay,
         retry_backoff=retry_backoff,
         timeout=timeout,
+        validate_schema=validate_schema,
     )

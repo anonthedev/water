@@ -12,6 +12,7 @@ from .storage import (
 from .execution_engine import FlowPausedError, FlowStoppedError
 from .hooks import HookManager
 from .events import EventEmitter, FlowEvent, EventSubscription
+from .rate_limiter import RateLimiter, get_rate_limiter
 
 __all__ = [
     "Flow",
@@ -30,4 +31,6 @@ __all__ = [
     "EventEmitter",
     "FlowEvent",
     "EventSubscription",
+    "RateLimiter",
+    "get_rate_limiter",
 ]

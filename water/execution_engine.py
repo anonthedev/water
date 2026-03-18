@@ -273,6 +273,12 @@ class ExecutionEngine:
                 await storage.save_task_run(task_run)
 
             try:
+                # Rate limiting
+                task_rate_limit = getattr(task, "rate_limit", None)
+                if task_rate_limit:
+                    from water.rate_limiter import get_rate_limiter
+                    await get_rate_limiter().acquire(task.id, task_rate_limit)
+
                 # Validate input against schema if enabled
                 if getattr(task, "validate_schema", False) and hasattr(task, "input_schema"):
                     try:

@@ -26,6 +26,7 @@ class NodeType(Enum):
     BRANCH = "branch"
     LOOP = "loop"
     MAP = "map"
+    DAG = "dag"
 
 
 class FlowPausedError(Exception):
@@ -202,6 +203,7 @@ class ExecutionEngine:
             NodeType.BRANCH: ExecutionEngine._execute_branch,
             NodeType.LOOP: ExecutionEngine._execute_loop,
             NodeType.MAP: ExecutionEngine._execute_map,
+            NodeType.DAG: ExecutionEngine._execute_dag,
         }
 
         handler = handlers.get(node_type)
@@ -536,3 +538,107 @@ class ExecutionEngine:
 
         results = await asyncio.gather(*[execute_for_item(item) for item in items])
         return {"results": list(results)}
+
+    @staticmethod
+    async def _execute_dag(
+        node: Dict[str, Any],
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
+        hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
+    ) -> OutputData:
+        """
+        Execute tasks as a DAG with automatic parallelization.
+
+        The node must have a 'tasks' key (list of tasks) and a 'dependencies'
+        key (dict mapping task_id -> list of dependency task_ids).
+        Tasks with no dependencies run first, in parallel. As dependencies
+        complete, downstream tasks are unlocked and run.
+
+        Each task receives the original input data merged with all upstream
+        task outputs available via context.get_task_output(task_id).
+
+        Returns a dict of {task_id: result} for all tasks in the DAG.
+        """
+        tasks = {task.id: task for task in node["tasks"]}
+        dependencies: Dict[str, List[str]] = node.get("dependencies", {})
+
+        # Validate dependencies reference known tasks
+        all_task_ids = set(tasks.keys())
+        for task_id, deps in dependencies.items():
+            if task_id not in all_task_ids:
+                raise ValueError(f"DAG dependency references unknown task: {task_id}")
+            for dep in deps:
+                if dep not in all_task_ids:
+                    raise ValueError(f"Task '{task_id}' depends on unknown task: {dep}")
+
+        # Detect cycles via topological sort
+        in_degree = {tid: 0 for tid in all_task_ids}
+        dependents: Dict[str, List[str]] = {tid: [] for tid in all_task_ids}
+        for task_id, deps in dependencies.items():
+            in_degree[task_id] = len(deps)
+            for dep in deps:
+                dependents[dep].append(task_id)
+
+        # Tasks with no dependencies start first
+        ready = [tid for tid, deg in in_degree.items() if deg == 0]
+        if not ready and all_task_ids:
+            raise ValueError("DAG has circular dependencies")
+
+        results: Dict[str, Any] = {}
+        completed = set()
+        pending_futures: Dict[str, asyncio.Task] = {}
+
+        async def run_task(task_id: str):
+            task = tasks[task_id]
+            # Merge upstream results into data
+            task_data = dict(data)
+            for dep_id in dependencies.get(task_id, []):
+                if dep_id in results:
+                    task_data[f"_{dep_id}_output"] = results[dep_id]
+            return await ExecutionEngine._execute_task(
+                task, task_data, context, storage, node_index, hooks, event_emitter
+            )
+
+        # Process DAG level by level
+        while ready or pending_futures:
+            # Launch all ready tasks
+            for tid in ready:
+                pending_futures[tid] = asyncio.create_task(run_task(tid))
+            ready = []
+
+            if not pending_futures:
+                break
+
+            # Wait for at least one task to complete
+            done, _ = await asyncio.wait(
+                pending_futures.values(),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # Process completed tasks
+            for finished in done:
+                # Find which task_id this corresponds to
+                finished_id = None
+                for tid, fut in pending_futures.items():
+                    if fut is finished:
+                        finished_id = tid
+                        break
+
+                result = await finished
+                results[finished_id] = result
+                completed.add(finished_id)
+                del pending_futures[finished_id]
+
+                # Unlock dependents
+                for dependent_id in dependents.get(finished_id, []):
+                    in_degree[dependent_id] -= 1
+                    if in_degree[dependent_id] == 0:
+                        ready.append(dependent_id)
+
+        if len(completed) != len(all_task_ids):
+            raise ValueError("DAG has circular dependencies — not all tasks completed")
+
+        return results

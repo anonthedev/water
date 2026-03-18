@@ -148,6 +148,41 @@ class Flow:
         self._tasks.append(node)
         return self
 
+    def dag(self, tasks: List[Any], dependencies: Dict[str, List[str]] = None) -> 'Flow':
+        """
+        Add a DAG (directed acyclic graph) of tasks with automatic parallelization.
+
+        Tasks with no dependencies run in parallel. As tasks complete, their
+        dependents are unlocked and executed.
+
+        Args:
+            tasks: List of tasks to execute
+            dependencies: Dict mapping task_id -> list of task_ids it depends on.
+                          Tasks not listed have no dependencies.
+
+        Returns:
+            Self for method chaining
+
+        Raises:
+            RuntimeError: If flow is already registered
+            ValueError: If task list is empty
+        """
+        self._validate_registration_state()
+        if not tasks:
+            raise ValueError("DAG task list cannot be empty")
+
+        coerced = [self._coerce_task(t) for t in tasks]
+        for task in coerced:
+            self._validate_task(task)
+
+        node: ExecutionNode = {
+            "type": NodeType.DAG.value,
+            "tasks": list(coerced),
+            "dependencies": dependencies or {},
+        }
+        self._tasks.append(node)
+        return self
+
     def parallel(self, tasks: List[Any]) -> 'Flow':
         """
         Add tasks to execute in parallel.

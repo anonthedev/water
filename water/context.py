@@ -124,7 +124,8 @@ class ExecutionContext:
             task_id=task_id,
             step_number=step_number or (self.step_number + 1),
             attempt_number=attempt_number,
-            flow_metadata=self.flow_metadata
+            flow_metadata=self.flow_metadata,
+            input_data=self.initial_input
         )
         
         # Copy task outputs and history to child
@@ -148,6 +149,7 @@ class ExecutionContext:
             "step_number": self.step_number,
             "attempt_number": self.attempt_number,
             "flow_metadata": self.flow_metadata,
+            "initial_input": self.initial_input,
             "execution_start_time": self.execution_start_time.isoformat(),
             "step_start_time": self.step_start_time.isoformat(),
             "task_outputs": self._task_outputs,

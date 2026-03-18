@@ -785,3 +785,31 @@ async def test_original_input_data_available_in_context():
     result = await flow.run({"value": 42})
     assert result["value"] == 52
 
+@pytest.mark.asyncio
+async def test_original_input_available_after_multiple_tasks():
+    """Verify initial_input is accessible in later tasks even after data transforms."""
+    def check_initial_input(params, context):
+        assert context.initial_input == {"value": 10}, "Initial input lost after prior task"
+        return {"value": params["input_data"]["value"] + context.initial_input["value"]}
+
+    task1 = create_task(
+        id="double",
+        description="Double the value",
+        input_schema=NumberInput,
+        output_schema=NumberOutput,
+        execute=lambda params, context: {"value": params["input_data"]["value"] * 2}
+    )
+    task2 = create_task(
+        id="add_initial",
+        description="Add initial input value",
+        input_schema=NumberInput,
+        output_schema=NumberOutput,
+        execute=check_initial_input
+    )
+
+    flow = Flow(id="multi_task_input_ctx", description="Test initial_input across tasks")
+    flow.then(task1).then(task2).register()
+
+    result = await flow.run({"value": 10})
+    assert result["value"] == 30  # 10*2=20, then 20+10=30
+

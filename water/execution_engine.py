@@ -212,7 +212,7 @@ class ExecutionEngine:
     ) -> OutputData:
         """
         Execute a single task, handling both sync and async functions.
-        Optionally records the task run in storage.
+        Supports retry with backoff, per-task timeouts, and storage recording.
         """
         from water.storage import TaskRun
 
@@ -223,45 +223,77 @@ class ExecutionEngine:
         context.step_start_time = datetime.utcnow()
         context.step_number += 1
 
-        # Create task run record
-        task_run = None
-        if storage:
-            task_run = TaskRun(
-                execution_id=context.execution_id,
-                task_id=task.id,
-                node_index=node_index,
-                status="running",
-                input_data=data,
-                started_at=datetime.utcnow(),
-            )
-            await storage.save_task_run(task_run)
+        retry_count = getattr(task, "retry_count", 0)
+        retry_delay = getattr(task, "retry_delay", 0.0)
+        retry_backoff = getattr(task, "retry_backoff", 1.0)
+        task_timeout = getattr(task, "timeout", None)
+        max_attempts = retry_count + 1
+        last_error = None
 
-        try:
-            # Execute the task
-            if inspect.iscoroutinefunction(task.execute):
-                result = await task.execute(params, context)
-            else:
-                result = task.execute(params, context)
+        for attempt in range(1, max_attempts + 1):
+            context.attempt_number = attempt
 
-            # Store the task result in context for future tasks to access
-            context.add_task_output(task.id, result)
-
-            # Update task run record
-            if storage and task_run:
-                task_run.status = "completed"
-                task_run.output_data = result
-                task_run.completed_at = datetime.utcnow()
+            # Create task run record
+            task_run = None
+            if storage:
+                task_run = TaskRun(
+                    execution_id=context.execution_id,
+                    task_id=task.id,
+                    node_index=node_index,
+                    status="running",
+                    input_data=data,
+                    started_at=datetime.utcnow(),
+                )
                 await storage.save_task_run(task_run)
 
-            return result
+            try:
+                # Execute the task (with optional timeout)
+                if inspect.iscoroutinefunction(task.execute):
+                    coro = task.execute(params, context)
+                    if task_timeout:
+                        result = await asyncio.wait_for(coro, timeout=task_timeout)
+                    else:
+                        result = await coro
+                else:
+                    if task_timeout:
+                        loop = asyncio.get_event_loop()
+                        result = await asyncio.wait_for(
+                            loop.run_in_executor(None, task.execute, params, context),
+                            timeout=task_timeout,
+                        )
+                    else:
+                        result = task.execute(params, context)
 
-        except Exception as e:
-            if storage and task_run:
-                task_run.status = "failed"
-                task_run.error = str(e)
-                task_run.completed_at = datetime.utcnow()
-                await storage.save_task_run(task_run)
-            raise
+                # Store the task result in context for future tasks to access
+                context.add_task_output(task.id, result)
+
+                # Update task run record
+                if storage and task_run:
+                    task_run.status = "completed"
+                    task_run.output_data = result
+                    task_run.completed_at = datetime.utcnow()
+                    await storage.save_task_run(task_run)
+
+                return result
+
+            except Exception as e:
+                last_error = e
+                if storage and task_run:
+                    task_run.status = "failed"
+                    task_run.error = str(e)
+                    task_run.completed_at = datetime.utcnow()
+                    await storage.save_task_run(task_run)
+
+                if attempt < max_attempts:
+                    delay = retry_delay * (retry_backoff ** (attempt - 1))
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    logger.info(
+                        f"Retrying task {task.id} (attempt {attempt + 1}/{max_attempts}) "
+                        f"after error: {e}"
+                    )
+                else:
+                    raise last_error
 
     @staticmethod
     async def _execute_sequential(

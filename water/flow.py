@@ -3,6 +3,7 @@ import inspect
 import uuid
 
 from water.execution_engine import ExecutionEngine, NodeType, FlowPausedError, FlowStoppedError
+from water.hooks import HookManager
 from water.types import (
     InputData,
     OutputData,
@@ -39,6 +40,7 @@ class Flow:
         self._registered: bool = False
         self.metadata: Dict[str, Any] = {}
         self.storage = storage
+        self.hooks = HookManager()
 
     def _validate_registration_state(self) -> None:
         """Ensure flow is not registered when adding tasks."""
@@ -225,13 +227,24 @@ class Flow:
         if not self._registered:
             raise RuntimeError("Flow must be registered before running")
 
-        return await ExecutionEngine.run(
-            self._tasks,
-            input_data,
-            flow_id=self.id,
-            flow_metadata=self.metadata,
-            storage=self.storage,
-        )
+        await self.hooks.emit("on_flow_start", flow_id=self.id, input_data=input_data)
+
+        try:
+            result = await ExecutionEngine.run(
+                self._tasks,
+                input_data,
+                flow_id=self.id,
+                flow_metadata=self.metadata,
+                storage=self.storage,
+                hooks=self.hooks,
+            )
+            await self.hooks.emit("on_flow_complete", flow_id=self.id, output_data=result)
+            return result
+        except (FlowPausedError, FlowStoppedError):
+            raise
+        except Exception as e:
+            await self.hooks.emit("on_flow_error", flow_id=self.id, error=e)
+            raise
 
     async def pause(self, execution_id: str) -> None:
         """
@@ -334,6 +347,7 @@ class Flow:
             flow_metadata=self.metadata,
             storage=self.storage,
             resume_from=resume_from,
+            hooks=self.hooks,
         )
 
     async def get_session(self, execution_id: str):

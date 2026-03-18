@@ -54,6 +54,7 @@ class ExecutionEngine:
         flow_metadata: Dict[str, Any] = None,
         storage: Optional[Any] = None,
         resume_from: Optional[Dict[str, Any]] = None,
+        hooks: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a complete flow execution graph.
@@ -147,7 +148,7 @@ class ExecutionEngine:
 
                 node = execution_graph[node_index]
                 data = await ExecutionEngine._execute_node(
-                    node, data, context, storage, node_index
+                    node, data, context, storage, node_index, hooks
                 )
 
             # Mark as completed
@@ -180,6 +181,7 @@ class ExecutionEngine:
         context: ExecutionContext,
         storage: Optional[Any] = None,
         node_index: int = 0,
+        hooks: Optional[Any] = None,
     ) -> OutputData:
         """
         Route execution to the appropriate node type handler.
@@ -200,7 +202,7 @@ class ExecutionEngine:
         if not handler:
             raise ValueError(f"Unhandled node type: {node_type}")
 
-        return await handler(node, data, context, storage, node_index)
+        return await handler(node, data, context, storage, node_index, hooks)
 
     @staticmethod
     async def _execute_task(
@@ -209,10 +211,11 @@ class ExecutionEngine:
         context: ExecutionContext,
         storage: Optional[Any] = None,
         node_index: int = 0,
+        hooks: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a single task, handling both sync and async functions.
-        Supports retry with backoff, per-task timeouts, and storage recording.
+        Supports retry with backoff, per-task timeouts, hooks, and storage recording.
         """
         from water.storage import TaskRun
 
@@ -229,6 +232,15 @@ class ExecutionEngine:
         task_timeout = getattr(task, "timeout", None)
         max_attempts = retry_count + 1
         last_error = None
+
+        # Emit task start hook
+        if hooks:
+            await hooks.emit(
+                "on_task_start",
+                task_id=task.id,
+                input_data=data,
+                context=context,
+            )
 
         for attempt in range(1, max_attempts + 1):
             context.attempt_number = attempt
@@ -274,6 +286,16 @@ class ExecutionEngine:
                     task_run.completed_at = datetime.utcnow()
                     await storage.save_task_run(task_run)
 
+                # Emit task complete hook
+                if hooks:
+                    await hooks.emit(
+                        "on_task_complete",
+                        task_id=task.id,
+                        input_data=data,
+                        output_data=result,
+                        context=context,
+                    )
+
                 return result
 
             except Exception as e:
@@ -293,6 +315,15 @@ class ExecutionEngine:
                         f"after error: {e}"
                     )
                 else:
+                    # Emit task error hook
+                    if hooks:
+                        await hooks.emit(
+                            "on_task_error",
+                            task_id=task.id,
+                            input_data=data,
+                            error=last_error,
+                            context=context,
+                        )
                     raise last_error
 
     @staticmethod
@@ -302,9 +333,10 @@ class ExecutionEngine:
         context: ExecutionContext,
         storage: Optional[Any] = None,
         node_index: int = 0,
+        hooks: Optional[Any] = None,
     ) -> OutputData:
         task = node["task"]
-        return await ExecutionEngine._execute_task(task, data, context, storage, node_index)
+        return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks)
 
     @staticmethod
     async def _execute_parallel(
@@ -313,11 +345,12 @@ class ExecutionEngine:
         context: ExecutionContext,
         storage: Optional[Any] = None,
         node_index: int = 0,
+        hooks: Optional[Any] = None,
     ) -> OutputData:
         tasks = node["tasks"]
 
         async def execute_single_task(task):
-            return await ExecutionEngine._execute_task(task, data, context, storage, node_index)
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks)
 
         coroutines = [execute_single_task(task) for task in tasks]
         results: List[OutputData] = await asyncio.gather(*coroutines)
@@ -334,6 +367,7 @@ class ExecutionEngine:
         context: ExecutionContext,
         storage: Optional[Any] = None,
         node_index: int = 0,
+        hooks: Optional[Any] = None,
     ) -> OutputData:
         branches = node["branches"]
 
@@ -342,7 +376,7 @@ class ExecutionEngine:
 
             if condition(data):
                 task = branch["task"]
-                return await ExecutionEngine._execute_task(task, data, context, storage, node_index)
+                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks)
 
         return data
 
@@ -353,6 +387,7 @@ class ExecutionEngine:
         context: ExecutionContext,
         storage: Optional[Any] = None,
         node_index: int = 0,
+        hooks: Optional[Any] = None,
     ) -> OutputData:
         condition = node["condition"]
         task = node["task"]
@@ -397,7 +432,7 @@ class ExecutionEngine:
                     )
 
             current_data = await ExecutionEngine._execute_task(
-                task, current_data, context, storage, node_index
+                task, current_data, context, storage, node_index, hooks
             )
             iteration_count += 1
 

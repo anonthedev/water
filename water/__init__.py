@@ -10,6 +10,7 @@ from .storage import (
     TaskRun,
 )
 from .execution_engine import FlowPausedError, FlowStoppedError
+from .hooks import HookManager
 
 __all__ = [
     "Flow",
@@ -24,4 +25,5 @@ __all__ = [
     "TaskRun",
     "FlowPausedError",
     "FlowStoppedError",
+    "HookManager",
 ]

@@ -114,13 +114,34 @@ agent = create_agent_task(
 Coordinate multiple agents with shared context:
 
 ```python
-from water.agents import create_agent_team, AgentRole
+from water.agents import create_agent_team, create_agent_task, AgentRole
 
 team = create_agent_team(
-    team_id="research",
-    roles=[
-        AgentRole(id="researcher", provider=provider, system_prompt="Research the topic."),
-        AgentRole(id="writer", provider=provider, system_prompt="Write the article."),
+    agents=[
+        AgentRole(
+            name="researcher",
+            description="Researches the topic",
+            task=create_agent_task(
+                id="researcher",
+                description="Research the topic",
+                provider="openai",
+                model="gpt-4o",
+                system_prompt="You are a helpful researcher.",
+                prompt_template="Research this topic and produce notes: {topic}",
+            ),
+        ),
+        AgentRole(
+            name="writer",
+            description="Writes the article",
+            task=create_agent_task(
+                id="writer",
+                description="Write the article",
+                provider="openai",
+                model="gpt-4o",
+                system_prompt="You are a clear technical writer.",
+                prompt_template="Turn these notes into a short article: {response}",
+            ),
+        ),
     ],
     strategy="sequential",  # or "round_robin", "dynamic"
 )

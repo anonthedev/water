@@ -1,9 +1,12 @@
 from typing import Any, List, Optional, Tuple, Dict, Type
 import asyncio
 import inspect
+import logging
 import uuid
 
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from water.execution_engine import ExecutionEngine, NodeType, FlowPausedError, FlowStoppedError
 from water.hooks import HookManager
@@ -29,6 +32,7 @@ class Flow:
         description: Optional[str] = None,
         storage: Optional[Any] = None,
         version: Optional[str] = None,
+        strict_contracts: bool = False,
     ) -> None:
         """
         Initialize a new Flow.
@@ -38,10 +42,13 @@ class Flow:
             description: Human-readable description of the flow's purpose.
             storage: Optional storage backend for persistence and pause/resume support.
             version: Optional version string for tracking flow schema changes.
+            strict_contracts: If True, register() raises ValueError on contract violations
+                              instead of just logging warnings.
         """
         self.id: str = id if id else f"flow_{uuid.uuid4().hex[:8]}"
         self.description: str = description if description else f"Flow {self.id}"
         self.version: Optional[str] = version
+        self.strict_contracts: bool = strict_contracts
         self._tasks: List[ExecutionNode] = []
         self._registered: bool = False
         self.metadata: Dict[str, Any] = {}
@@ -376,6 +383,70 @@ class Flow:
             execute=execute_sub_flow,
         )
 
+    @staticmethod
+    def _get_model_field_names(schema: Any) -> Optional[set]:
+        """Extract field names from a Pydantic model class.
+
+        Works with both Pydantic v1 (__fields__) and v2 (model_fields).
+        Returns None if the schema is not a Pydantic model.
+        """
+        if schema is None:
+            return None
+        if hasattr(schema, "model_fields"):
+            return set(schema.model_fields.keys())
+        if hasattr(schema, "__fields__"):
+            return set(schema.__fields__.keys())
+        return None
+
+    def validate_contracts(self) -> List[Dict[str, Any]]:
+        """Validate data contracts between sequential tasks.
+
+        Walks through the task chain and checks that for sequential tasks,
+        the output_schema fields of task N overlap with the input_schema
+        fields of task N+1. Only checks sequential (.then()) tasks.
+
+        Returns:
+            A list of violations. Each violation is a dict with keys:
+            from_task, to_task, missing_fields, message.
+            An empty list means all contracts are satisfied.
+        """
+        violations: List[Dict[str, Any]] = []
+
+        sequential_tasks = []
+        for node in self._tasks:
+            if node.get("type") == NodeType.SEQUENTIAL.value:
+                task = node.get("task")
+                if task is not None:
+                    sequential_tasks.append(task)
+
+        for i in range(len(sequential_tasks) - 1):
+            task_a = sequential_tasks[i]
+            task_b = sequential_tasks[i + 1]
+
+            output_fields = self._get_model_field_names(
+                getattr(task_a, "output_schema", None)
+            )
+            input_fields = self._get_model_field_names(
+                getattr(task_b, "input_schema", None)
+            )
+
+            if output_fields is None or input_fields is None:
+                continue
+
+            missing = sorted(input_fields - output_fields)
+            if missing:
+                violations.append({
+                    "from_task": task_a.id,
+                    "to_task": task_b.id,
+                    "missing_fields": missing,
+                    "message": (
+                        f"Task '{task_a.id}' output_schema is missing fields "
+                        f"required by task '{task_b.id}' input_schema: {missing}"
+                    ),
+                })
+
+        return violations
+
     def register(self) -> 'Flow':
         """
         Register the flow for execution.
@@ -387,11 +458,24 @@ class Flow:
             Self for method chaining
 
         Raises:
-            ValueError: If flow has no tasks
+            ValueError: If flow has no tasks, or if strict_contracts is True
+                        and contract violations are found.
         """
         if not self._tasks:
             raise ValueError("Flow must have at least one task")
         self._registered = True
+
+        violations = self.validate_contracts()
+        if violations:
+            if self.strict_contracts:
+                messages = [v["message"] for v in violations]
+                raise ValueError(
+                    "Data contract violations found:\n" + "\n".join(messages)
+                )
+            else:
+                for v in violations:
+                    logger.warning("Data contract violation: %s", v["message"])
+
         return self
 
     async def run(self, input_data: InputData) -> OutputData:

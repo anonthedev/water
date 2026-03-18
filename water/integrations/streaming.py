@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from water.flow import Flow
+from water.core.flow import Flow
 
 logger = logging.getLogger(__name__)
 

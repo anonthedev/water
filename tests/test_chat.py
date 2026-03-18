@@ -7,9 +7,9 @@ All tests use InMemoryAdapter — no real platform SDKs are required.
 import pytest
 from pydantic import BaseModel
 
-from water.flow import Flow
-from water.task import create_task
-from water.chat import (
+from water.core import Flow
+from water.core import create_task
+from water.integrations.chat import (
     ChatBot,
     ChatMessage,
     FlowNotification,

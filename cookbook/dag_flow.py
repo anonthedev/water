@@ -13,7 +13,7 @@ Usage:
     python cookbook/dag_flow.py
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

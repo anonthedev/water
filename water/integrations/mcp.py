@@ -12,8 +12,8 @@ from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import BaseModel
 
-from water.flow import Flow
-from water.task import Task, create_task
+from water.core.flow import Flow
+from water.core.task import Task, create_task
 
 
 class MCPServer:

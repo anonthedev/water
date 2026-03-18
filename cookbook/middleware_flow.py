@@ -6,7 +6,8 @@ headers and log every task execution — without adding explicit task nodes
 for cross-cutting concerns.
 """
 
-from water import Flow, create_task, Middleware, LoggingMiddleware, TransformMiddleware
+from water.core import Flow, create_task
+from water.middleware import Middleware, LoggingMiddleware, TransformMiddleware
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

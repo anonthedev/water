@@ -6,7 +6,8 @@ for later inspection and replay. Orders that fail validation or processing
 are pushed to the DLQ instead of being silently lost.
 """
 
-from water import Flow, create_task, InMemoryDLQ
+from water.core import Flow, create_task
+from water.resilience import InMemoryDLQ
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

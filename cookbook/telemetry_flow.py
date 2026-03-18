@@ -10,7 +10,8 @@ Usage:
     python cookbook/telemetry_flow.py
 """
 
-from water import Flow, create_task, TelemetryManager, is_otel_available
+from water.core import Flow, create_task
+from water.observability import TelemetryManager, is_otel_available
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

@@ -19,8 +19,8 @@ from typing import Dict, Any
 
 from pydantic import BaseModel
 
-from water import Flow, create_task
-from water.agent_task import create_agent_task, MockProvider
+from water.core import Flow, create_task
+from water.agents import create_agent_task, MockProvider
 
 
 # ---------------------------------------------------------------------------

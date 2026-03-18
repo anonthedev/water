@@ -14,7 +14,8 @@ from typing import Any, Dict
 
 from pydantic import BaseModel
 
-from water import Flow, create_task, InMemoryCheckpoint
+from water.core import Flow, create_task
+from water.resilience import InMemoryCheckpoint
 
 
 # --- Schemas ---

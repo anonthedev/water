@@ -6,7 +6,7 @@ parameter on .then(). Tasks are skipped when the condition returns False,
 and the data passes through unchanged to the next step in the pipeline.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import asyncio

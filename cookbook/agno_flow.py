@@ -9,7 +9,7 @@ from textwrap import dedent
 from typing import Dict, Optional, Any
 import asyncio
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from agno.agent import Agent
 from agno.models.openai import OpenAIChat
 from agno.tools.duckduckgo import DuckDuckGoTools

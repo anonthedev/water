@@ -9,7 +9,8 @@ Usage:
     python cookbook/human_in_the_loop_flow.py
 """
 
-from water import Flow, create_task, create_human_task, HumanInputManager
+from water.core import Flow, create_task
+from water.agents import create_human_task, HumanInputManager
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

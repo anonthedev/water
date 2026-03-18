@@ -7,7 +7,8 @@ to write fast, deterministic unit tests for flows without real side effects.
 
 import asyncio
 from pydantic import BaseModel
-from water import Flow, create_task, MockTask, FlowTestRunner
+from water.core import Flow, create_task
+from water.utils.testing import MockTask, FlowTestRunner
 
 
 # --- Schemas ---

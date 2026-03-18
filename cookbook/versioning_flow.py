@@ -6,7 +6,7 @@ execution the version is available in the flow's metadata, making it easy
 to track which pipeline definition produced a given result.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

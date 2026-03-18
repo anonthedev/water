@@ -5,7 +5,7 @@ import json
 from pydantic import BaseModel
 
 from water import create_task, Flow
-from water.mcp import MCPServer, MCPClient, create_mcp_task
+from water.integrations.mcp import MCPServer, MCPClient, create_mcp_task
 
 
 # --- Test Schemas ---

@@ -7,7 +7,7 @@ third attempt using exponential backoff. A timeout ensures the task does
 not hang indefinitely.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

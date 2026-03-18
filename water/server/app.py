@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from datetime import datetime
 
-from water.flow import Flow
+from water.core.flow import Flow
 from water.observability.dashboard import FlowDashboard
 
 

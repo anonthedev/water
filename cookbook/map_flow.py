@@ -6,7 +6,7 @@ per item in a list field. Items are processed in parallel and the results
 are collected back into a list, implementing a fan-out/fan-in pattern.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any, List
 import asyncio

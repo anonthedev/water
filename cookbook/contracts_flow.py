@@ -8,7 +8,7 @@ to enforce that sequential tasks have compatible schemas.
 
 import asyncio
 from pydantic import BaseModel
-from water import create_task, Flow
+from water.core import create_task, Flow
 
 
 # --- Define schemas ---

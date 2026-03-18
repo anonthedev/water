@@ -1,14 +1,14 @@
 import pytest
 import asyncio
 from pydantic import BaseModel
-from water.approval import (
+from water.agents.approval import (
     RiskLevel,
     ApprovalPolicy,
     ApprovalGate,
     ApprovalDenied,
     create_approval_task,
 )
-from water.flow import Flow
+from water.core import Flow
 
 
 class SimpleInput(BaseModel):
@@ -282,7 +282,7 @@ async def test_approval_task_in_flow():
     class PipeOutput(BaseModel):
         message: str
 
-    from water.task import Task
+    from water.core import Task
 
     async def transform_execute(params, context):
         data = params["input_data"]

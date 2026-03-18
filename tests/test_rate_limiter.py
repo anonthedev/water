@@ -3,7 +3,7 @@ import time
 import asyncio
 from pydantic import BaseModel
 from water import create_task, Flow
-from water.rate_limiter import RateLimiter
+from water.resilience import RateLimiter
 
 
 class NumberInput(BaseModel):

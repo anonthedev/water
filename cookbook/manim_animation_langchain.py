@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 from langchain.agents import Tool, AgentType, initialize_agent
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

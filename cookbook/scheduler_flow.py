@@ -8,7 +8,8 @@ or a cron expression.
 
 import asyncio
 from pydantic import BaseModel
-from water import create_task, Flow, FlowScheduler
+from water.core import create_task, Flow
+from water.utils.scheduler import FlowScheduler
 
 
 # ── Models ────────────────────────────────────────────────────────

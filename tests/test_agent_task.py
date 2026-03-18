@@ -6,7 +6,7 @@ from typing import Dict, Any
 from pydantic import BaseModel
 
 from water import Flow, create_task
-from water.agent_task import (
+from water.agents.llm import (
     create_agent_task,
     MockProvider,
     CustomProvider,

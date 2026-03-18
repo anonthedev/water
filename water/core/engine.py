@@ -266,7 +266,7 @@ class ExecutionEngine:
         Supports retry with backoff, per-task timeouts, hooks, events, storage recording, and telemetry.
         """
         from water.storage import TaskRun
-        from water.cache import cache_key as _cache_key
+        from water.resilience.cache import cache_key as _cache_key
 
         params: Dict[str, InputData] = {"input_data": data}
 
@@ -285,7 +285,7 @@ class ExecutionEngine:
         cb = getattr(task, "circuit_breaker", None)
         if cb is not None:
             if not cb.can_execute():
-                from water.circuit_breaker import CircuitBreakerOpen
+                from water.resilience.circuit_breaker import CircuitBreakerOpen
                 raise CircuitBreakerOpen(
                     f"Circuit breaker is open for task '{task.id}'"
                 )
@@ -311,7 +311,7 @@ class ExecutionEngine:
                 context=context,
             )
         if event_emitter:
-            from water.events import FlowEvent
+            from water.middleware.events import FlowEvent
             await event_emitter.emit(FlowEvent(
                 "task_start", context.flow_id,
                 task_id=task.id, execution_id=context.execution_id,
@@ -344,7 +344,7 @@ class ExecutionEngine:
                 # Rate limiting
                 task_rate_limit = getattr(task, "rate_limit", None)
                 if task_rate_limit:
-                    from water.rate_limiter import get_rate_limiter
+                    from water.resilience.rate_limiter import get_rate_limiter
                     await get_rate_limiter().acquire(task.id, task_rate_limit)
 
                 # Validate input against schema if enabled
@@ -417,7 +417,7 @@ class ExecutionEngine:
                         context=context,
                     )
                 if event_emitter:
-                    from water.events import FlowEvent
+                    from water.middleware.events import FlowEvent
                     await event_emitter.emit(FlowEvent(
                         "task_complete", context.flow_id,
                         task_id=task.id, execution_id=context.execution_id,
@@ -464,7 +464,7 @@ class ExecutionEngine:
                             context=context,
                         )
                     if event_emitter:
-                        from water.events import FlowEvent
+                        from water.middleware.events import FlowEvent
                         await event_emitter.emit(FlowEvent(
                             "task_error", context.flow_id,
                             task_id=task.id, execution_id=context.execution_id,
@@ -475,7 +475,7 @@ class ExecutionEngine:
                         _telem_span_ctx.__exit__(type(last_error), last_error, last_error.__traceback__)
                     # Push to dead letter queue if configured
                     if dlq is not None:
-                        from water.dlq import DeadLetter
+                        from water.resilience.dlq import DeadLetter
                         letter = DeadLetter(
                             task_id=task.id,
                             flow_id=context.flow_id,

@@ -13,7 +13,8 @@ Backends available:
 """
 
 import asyncio
-from water import Flow, create_task, InMemoryStorage, SQLiteStorage
+from water.core import Flow, create_task
+from water.storage import InMemoryStorage, SQLiteStorage
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ sqlite_flow.add_task(shout)
 # ---------------------------------------------------------------------------
 
 def make_redis_flow() -> Flow:
-    from water import RedisStorage
+    from water.storage import RedisStorage
 
     redis_flow = Flow(
         name="redis_flow",
@@ -79,7 +80,7 @@ def make_redis_flow() -> Flow:
 # ---------------------------------------------------------------------------
 
 async def make_postgres_flow() -> Flow:
-    from water import PostgresStorage
+    from water.storage import PostgresStorage
 
     storage = PostgresStorage(dsn="postgresql://user:password@localhost:5432/mydb")
     # IMPORTANT: call initialize() once to create the tables

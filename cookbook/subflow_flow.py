@@ -7,7 +7,7 @@ task via Flow.as_task(). Auto-coercion is also shown: passing a Flow
 directly to .then() converts it automatically.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import asyncio

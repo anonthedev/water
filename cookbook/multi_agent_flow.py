@@ -15,9 +15,8 @@ from typing import Dict, Any
 
 from pydantic import BaseModel
 
-from water.task import create_task
-from water.flow import Flow
-from water.multi_agent import (
+from water.core import create_task, Flow
+from water.agents.multi import (
     AgentRole,
     AgentOrchestrator,
     SharedContext,

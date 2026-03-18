@@ -89,7 +89,7 @@ async def test_multiple_services():
 
 def test_service_not_found():
     """context.get_service raises KeyError for an unknown service name."""
-    from water.context import ExecutionContext
+    from water.core.context import ExecutionContext
 
     ctx = ExecutionContext(flow_id="test")
     with pytest.raises(KeyError, match="Service 'missing' not found"):
@@ -98,7 +98,7 @@ def test_service_not_found():
 
 def test_has_service():
     """context.has_service returns the correct boolean."""
-    from water.context import ExecutionContext
+    from water.core.context import ExecutionContext
 
     ctx = ExecutionContext(flow_id="test")
     assert ctx.has_service("db") is False

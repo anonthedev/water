@@ -1,4 +1,4 @@
-from water import FlowServer
+from water.server import FlowServer
 from branched_flow import notification_flow
 from loop_flow import retry_flow
 from parallel_flow import send_notification_flow

@@ -6,7 +6,8 @@ The first request for a city fetches weather data; subsequent requests
 for the same city return the cached result instantly.
 """
 
-from water import Flow, create_task, InMemoryCache
+from water.core import Flow, create_task
+from water.resilience import InMemoryCache
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

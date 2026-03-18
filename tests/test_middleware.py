@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel
 from water import create_task, Middleware, LoggingMiddleware, TransformMiddleware
-from water.flow import Flow
+from water.core import Flow
 
 
 class NumberInput(BaseModel):

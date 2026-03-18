@@ -8,7 +8,8 @@ configuration instead of Python chaining, and then execute it.
 import asyncio
 import json
 from pydantic import BaseModel
-from water import create_task, load_flow_from_dict, load_flow_from_json
+from water.core import create_task
+from water.utils.declarative import load_flow_from_dict, load_flow_from_json
 
 
 # ---- 1. Define schemas ----

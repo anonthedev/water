@@ -10,7 +10,7 @@ clients themselves, which keeps task logic decoupled from infrastructure.
 
 import asyncio
 from pydantic import BaseModel
-from water import create_task, Flow
+from water.core import create_task, Flow
 
 
 # ---------------------------------------------------------------------------

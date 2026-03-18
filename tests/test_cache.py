@@ -127,7 +127,7 @@ async def test_cache_ttl_expires():
     flow.then(task).register()
 
     # Manually set with short TTL
-    from water.cache import cache_key
+    from water.resilience.cache import cache_key
     ck = cache_key("ttl_task", {"value": 0})
     cache.set(ck, {"value": 1}, ttl=0.05)
 

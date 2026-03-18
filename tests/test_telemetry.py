@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel
 from water import create_task, Flow, TelemetryManager, is_otel_available
-from water.telemetry import NoOpTelemetry
+from water.observability.telemetry import NoOpTelemetry
 
 
 class NumberInput(BaseModel):

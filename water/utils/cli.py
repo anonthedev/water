@@ -29,7 +29,7 @@ def _import_flow(spec: str):
         AttributeError: If the variable is not found in the module.
         TypeError: If the variable is not a Flow instance.
     """
-    from water.flow import Flow
+    from water.core.flow import Flow
 
     if ":" not in spec:
         raise ValueError(
@@ -60,7 +60,7 @@ def _find_flows_in_module(module_path: str):
     Returns:
         List of (variable_name, flow_object) tuples.
     """
-    from water.flow import Flow
+    from water.core.flow import Flow
 
     module = importlib.import_module(module_path)
     flows = []

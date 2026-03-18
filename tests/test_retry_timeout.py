@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from pydantic import BaseModel
 from water import create_task
-from water.flow import Flow
+from water.core import Flow
 
 
 class NumberInput(BaseModel):

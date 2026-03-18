@@ -12,7 +12,8 @@ Tasks access secrets via ``context.get_service('secrets')``.
 
 import asyncio
 from pydantic import BaseModel
-from water import create_task, Flow, SecretsManager
+from water.core import create_task, Flow
+from water.utils.secrets import SecretsManager
 
 
 # ---------------------------------------------------------------------------

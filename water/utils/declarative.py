@@ -7,7 +7,7 @@ Allows defining flows via YAML/JSON configuration dicts instead of Python code.
 import json
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from water.flow import Flow
+from water.core.flow import Flow
 
 
 def _resolve_task(task_id: str, task_registry: dict) -> Any:

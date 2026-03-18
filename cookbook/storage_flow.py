@@ -9,8 +9,9 @@ Usage:
     python cookbook/storage_flow.py
 """
 
-from water import Flow, create_task, InMemoryStorage, FlowPausedError
-from water.storage import FlowStatus
+from water.core import Flow, create_task
+from water.core.engine import FlowPausedError
+from water.storage import InMemoryStorage, FlowStatus
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

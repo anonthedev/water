@@ -12,8 +12,8 @@ progress events from a Water flow execution, including:
 
 import asyncio
 from pydantic import BaseModel
-from water import Flow, create_task
-from water.streaming import StreamManager, StreamingFlow, add_streaming_routes
+from water.core import Flow, create_task
+from water.integrations.streaming import StreamManager, StreamingFlow, add_streaming_routes
 
 
 # ---------------------------------------------------------------------------

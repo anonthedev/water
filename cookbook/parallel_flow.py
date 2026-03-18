@@ -6,7 +6,7 @@ are sent simultaneously to a newly registered user. Shows how .parallel() execut
 independent tasks concurrently for improved performance.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

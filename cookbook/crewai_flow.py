@@ -15,7 +15,7 @@ from typing import Any, Dict
 from crewai import Agent, Crew, Task as CrewTask
 from pydantic import BaseModel
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 
 
 # --- Pydantic Schemas ---

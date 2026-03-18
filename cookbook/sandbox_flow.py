@@ -11,8 +11,8 @@ from typing import Any, Dict
 
 from pydantic import BaseModel
 
-from water import Flow, create_task
-from water.sandbox import (
+from water.core import Flow, create_task
+from water.agents.sandbox import (
     InMemorySandbox,
     SubprocessSandbox,
     SandboxConfig,

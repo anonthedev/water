@@ -7,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from water import Flow, create_task
-from water.streaming import StreamEvent, StreamManager, StreamingFlow
+from water.integrations.streaming import StreamEvent, StreamManager, StreamingFlow
 
 
 # ---------------------------------------------------------------------------

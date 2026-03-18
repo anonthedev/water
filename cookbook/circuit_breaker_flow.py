@@ -8,7 +8,8 @@ the recovery timeout elapses the circuit enters half-open state and
 allows a single test call to check if the service has recovered.
 """
 
-from water import Flow, create_task, CircuitBreaker, CircuitBreakerOpen
+from water.core import Flow, create_task
+from water.resilience import CircuitBreaker, CircuitBreakerOpen
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

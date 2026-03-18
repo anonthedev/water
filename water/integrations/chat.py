@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
-from water.flow import Flow
+from water.core.flow import Flow
 
 logger = logging.getLogger(__name__)
 

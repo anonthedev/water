@@ -9,7 +9,7 @@ renderer (GitHub markdown, Mermaid Live Editor, etc.).
 
 import asyncio
 from pydantic import BaseModel
-from water import create_task, Flow
+from water.core import create_task, Flow
 
 
 # -- Schemas ------------------------------------------------------------------

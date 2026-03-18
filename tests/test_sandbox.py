@@ -4,14 +4,14 @@ import pytest
 import asyncio
 from pydantic import BaseModel
 
-from water.sandbox import (
+from water.agents.sandbox import (
     InMemorySandbox,
     SubprocessSandbox,
     SandboxConfig,
     SandboxResult,
     create_sandboxed_task,
 )
-from water.flow import Flow
+from water.core import Flow
 
 
 # --- InMemorySandbox Tests ---

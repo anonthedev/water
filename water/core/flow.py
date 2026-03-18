@@ -9,7 +9,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 from water.core.engine import ExecutionEngine, NodeType, FlowPausedError, FlowStoppedError
-from water.hooks import HookManager
+from water.middleware.hooks import HookManager
 from water.core.types import (
     InputData,
     OutputData,
@@ -505,7 +505,7 @@ class Flow:
         await self.hooks.emit("on_flow_start", flow_id=self.id, input_data=input_data)
 
         if self.events:
-            from water.events import FlowEvent
+            from water.middleware.events import FlowEvent
             await self.events.emit(FlowEvent("flow_start", self.id, data={"input": input_data}))
 
         try:

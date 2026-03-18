@@ -15,9 +15,8 @@ Features shown:
 
 import asyncio
 from pydantic import BaseModel
-from water.flow import Flow
-from water.task import Task
-from water.approval import (
+from water.core import Flow, Task
+from water.agents.approval import (
     RiskLevel,
     ApprovalPolicy,
     ApprovalGate,

@@ -1,8 +1,8 @@
 import pytest
 from pydantic import BaseModel
 from water import create_task
-from water.flow import Flow
-from water.hooks import HookManager
+from water.core import Flow
+from water.middleware.hooks import HookManager
 
 
 class NumberInput(BaseModel):

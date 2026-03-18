@@ -22,7 +22,7 @@ def test_redis_storage_import_error():
     except ImportError:
         pass
 
-    from water.storage_redis import RedisStorage
+    from water.storage.redis import RedisStorage
 
     with pytest.raises(ImportError, match="redis"):
         RedisStorage()
@@ -32,7 +32,7 @@ def test_redis_storage_instantiates_when_redis_available():
     """If the redis package is available, RedisStorage can be instantiated."""
     pytest.importorskip("redis")
 
-    from water.storage_redis import RedisStorage
+    from water.storage.redis import RedisStorage
 
     storage = RedisStorage(redis_url="redis://localhost:6379", prefix="test")
     assert storage._prefix == "test"
@@ -50,7 +50,7 @@ def test_postgres_storage_import_error():
     except ImportError:
         pass
 
-    from water.storage_postgres import PostgresStorage
+    from water.storage.postgres import PostgresStorage
 
     with pytest.raises(ImportError, match="asyncpg"):
         PostgresStorage(dsn="postgresql://localhost/test")
@@ -60,7 +60,7 @@ def test_postgres_storage_instantiates_when_asyncpg_available():
     """If asyncpg is available, PostgresStorage can be instantiated."""
     pytest.importorskip("asyncpg")
 
-    from water.storage_postgres import PostgresStorage
+    from water.storage.postgres import PostgresStorage
 
     storage = PostgresStorage(dsn="postgresql://localhost/test")
     assert storage._dsn == "postgresql://localhost/test"

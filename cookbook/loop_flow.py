@@ -6,7 +6,7 @@ service until success or max attempts reached. Shows how .loop() continues
 execution based on conditions and tracks state between iterations.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

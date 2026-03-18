@@ -7,7 +7,7 @@ catching schema mismatches, invalid branch conditions, and DAG cycle errors
 before committing to a full run.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

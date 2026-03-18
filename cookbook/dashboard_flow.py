@@ -12,7 +12,10 @@ Then visit http://localhost:8000/dashboard
 """
 
 from pydantic import BaseModel
-from water import Flow, create_task, FlowServer, InMemoryStorage, FlowDashboard
+from water.core import Flow, create_task
+from water.server import FlowServer
+from water.storage import InMemoryStorage
+from water.observability import FlowDashboard
 
 
 # --- Define a simple flow ---

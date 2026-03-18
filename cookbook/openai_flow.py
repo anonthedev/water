@@ -15,7 +15,7 @@ from typing import Any, Dict
 from openai import OpenAI
 from pydantic import BaseModel
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 
 
 client = OpenAI()

@@ -6,7 +6,7 @@ before the next can begin. Shows how .then() creates clear dependencies and
 how context preserves data across the pipeline.
 """
 
-from water import Flow, create_task
+from water.core import Flow, create_task
 from pydantic import BaseModel
 from typing import Dict, Any
 import asyncio

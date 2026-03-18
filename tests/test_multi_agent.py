@@ -4,9 +4,9 @@ import pytest
 from pydantic import BaseModel
 from typing import Dict, Any
 
-from water.task import Task, create_task
-from water.flow import Flow
-from water.multi_agent import (
+from water.core import Task, create_task
+from water.core import Flow
+from water.agents.multi import (
     AgentRole,
     SharedContext,
     AgentOrchestrator,

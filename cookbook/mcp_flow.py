@@ -17,8 +17,8 @@ from typing import Dict, Any
 
 from pydantic import BaseModel
 
-from water import Flow, create_task
-from water.mcp import MCPServer, MCPClient, create_mcp_task
+from water.core import Flow, create_task
+from water.integrations.mcp import MCPServer, MCPClient, create_mcp_task
 
 
 # ---------------------------------------------------------------------------

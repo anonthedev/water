@@ -12,8 +12,8 @@ or TelegramAdapter (see commented-out examples at the bottom).
 import asyncio
 from pydantic import BaseModel
 
-from water import Flow, create_task
-from water.chat import (
+from water.core import Flow, create_task
+from water.integrations.chat import (
     ChatBot,
     ChatMessage,
     FlowNotification,
@@ -149,7 +149,7 @@ async def main():
 # ---------------------------------------------------------------------------
 
 # --- Slack ---
-# from water.chat import SlackAdapter
+# from water.integrations.chat import SlackAdapter
 #
 # slack_adapter = SlackAdapter(
 #     token="xoxb-your-slack-bot-token",
@@ -160,14 +160,14 @@ async def main():
 # bot.register_flow("deploy", deploy_flow, description="Trigger a deployment")
 
 # --- Discord ---
-# from water.chat import DiscordAdapter
+# from water.integrations.chat import DiscordAdapter
 #
 # discord_adapter = DiscordAdapter(token="your-discord-bot-token")
 # bot = ChatBot(adapter=discord_adapter)
 # bot.register_flow("status", status_flow, description="Check system status")
 
 # --- Telegram ---
-# from water.chat import TelegramAdapter
+# from water.integrations.chat import TelegramAdapter
 #
 # telegram_adapter = TelegramAdapter(token="your-telegram-bot-token")
 # bot = ChatBot(adapter=telegram_adapter)

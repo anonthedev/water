@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 from water import create_task, Flow, FlowScheduler
-from water.scheduler import _cron_matches, ScheduledJob
+from water.utils.scheduler import _cron_matches, ScheduledJob
 
 
 class HealthInput(BaseModel):

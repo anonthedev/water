@@ -6,8 +6,8 @@ progress events during flow execution. A subscriber collects all events
 and prints them after the flow completes.
 """
 
-from water import Flow, create_task
-from water.events import EventEmitter
+from water.core import Flow, create_task
+from water.middleware.events import EventEmitter
 from pydantic import BaseModel
 from typing import Dict, Any, List
 import asyncio

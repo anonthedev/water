@@ -18,29 +18,29 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 class TestImportFlowHelper:
     def test_import_flow_valid(self):
-        from water.cli import _import_flow
+        from water.utils.cli import _import_flow
         flow = _import_flow("tests.sample_flow_for_cli:hello_flow")
-        from water.flow import Flow
+        from water.core import Flow
         assert isinstance(flow, Flow)
         assert flow.id == "hello"
 
     def test_import_flow_missing_colon(self):
-        from water.cli import _import_flow
+        from water.utils.cli import _import_flow
         with pytest.raises(ValueError, match="Invalid spec"):
             _import_flow("tests.sample_flow_for_cli")
 
     def test_import_flow_bad_module(self):
-        from water.cli import _import_flow
+        from water.utils.cli import _import_flow
         with pytest.raises(ImportError):
             _import_flow("nonexistent_module_xyz:foo")
 
     def test_import_flow_bad_variable(self):
-        from water.cli import _import_flow
+        from water.utils.cli import _import_flow
         with pytest.raises(AttributeError):
             _import_flow("tests.sample_flow_for_cli:no_such_var")
 
     def test_import_flow_not_a_flow(self):
-        from water.cli import _import_flow
+        from water.utils.cli import _import_flow
         with pytest.raises(TypeError, match="not a Flow instance"):
             _import_flow("tests.sample_flow_for_cli:greet_task")
 
@@ -51,7 +51,7 @@ class TestImportFlowHelper:
 
 def run_cli(*args, input_data=None):
     """Run the water CLI as a subprocess and return (returncode, stdout, stderr)."""
-    cmd = [sys.executable, "-m", "water.cli"] + list(args)
+    cmd = [sys.executable, "-m", "water.utils.cli"] + list(args)
     result = subprocess.run(
         cmd,
         capture_output=True,

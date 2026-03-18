@@ -17,6 +17,8 @@ from .human_task import create_human_task, HumanInputManager, HumanInputRequired
 from .telemetry import TelemetryManager, is_otel_available
 from .cache import TaskCache, InMemoryCache
 from .circuit_breaker import CircuitBreaker, CircuitBreakerOpen
+from .checkpoint import CheckpointBackend, InMemoryCheckpoint
+from .middleware import Middleware, LoggingMiddleware, TransformMiddleware
 
 __all__ = [
     "Flow",
@@ -46,4 +48,9 @@ __all__ = [
     "InMemoryCache",
     "CircuitBreaker",
     "CircuitBreakerOpen",
+    "CheckpointBackend",
+    "InMemoryCheckpoint",
+    "Middleware",
+    "LoggingMiddleware",
+    "TransformMiddleware",
 ]

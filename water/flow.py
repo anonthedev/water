@@ -49,6 +49,8 @@ class Flow:
         self.hooks = HookManager()
         self.events: Optional[Any] = None
         self.telemetry: Optional[Any] = None
+        self.checkpoint: Optional[Any] = None
+        self.middleware: List[Any] = []
 
     def _validate_registration_state(self) -> None:
         """Ensure flow is not registered when adding tasks."""
@@ -76,6 +78,22 @@ class Flow:
         """Validate that a loop condition function is not async."""
         if inspect.iscoroutinefunction(condition):
             raise ValueError("Loop conditions cannot be async functions")
+
+    def use(self, middleware: Any) -> 'Flow':
+        """
+        Add a middleware to the flow.
+
+        Middleware ``before_task`` / ``after_task`` hooks are called around
+        every task execution, in the order they were added.
+
+        Args:
+            middleware: A Middleware instance (or any object with before_task/after_task).
+
+        Returns:
+            Self for method chaining.
+        """
+        self.middleware.append(middleware)
+        return self
 
     def set_metadata(self, key: str, value: Any) -> 'Flow':
         """
@@ -393,6 +411,8 @@ class Flow:
                 hooks=self.hooks,
                 event_emitter=self.events,
                 telemetry=self.telemetry,
+                checkpoint=self.checkpoint,
+                middleware=self.middleware if self.middleware else None,
             )
             await self.hooks.emit("on_flow_complete", flow_id=self.id, output_data=result)
             if self.events:

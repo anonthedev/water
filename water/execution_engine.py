@@ -59,6 +59,8 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        checkpoint: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         """
         Execute a complete flow execution graph.
@@ -101,6 +103,13 @@ class ExecutionEngine:
             )
             data = input_data
             start_index = 0
+
+            # Try to recover from a checkpoint (crash recovery)
+            if checkpoint is not None:
+                saved = await checkpoint.load(flow_id, context.execution_id)
+                if saved is not None:
+                    start_index = saved["node_index"]
+                    data = saved["data"]
 
         # Save initial session state if storage is provided
         if storage:
@@ -154,8 +163,14 @@ class ExecutionEngine:
 
                 node = execution_graph[node_index]
                 data = await ExecutionEngine._execute_node(
-                    node, data, context, storage, node_index, hooks, event_emitter, telemetry
+                    node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
                 )
+
+                # Save checkpoint after each successful node
+                if checkpoint is not None:
+                    await checkpoint.save(
+                        flow_id, context.execution_id, node_index + 1, data
+                    )
 
             # Mark as completed
             if storage:
@@ -166,6 +181,10 @@ class ExecutionEngine:
                     session.current_data = data
                     session.current_node_index = len(execution_graph)
                     await storage.save_session(session)
+
+            # Clear checkpoint on successful completion
+            if checkpoint is not None:
+                await checkpoint.clear(flow_id, context.execution_id)
 
         except (FlowPausedError, FlowStoppedError):
             raise
@@ -190,6 +209,7 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         """
         Route execution to the appropriate node type handler.
@@ -212,7 +232,7 @@ class ExecutionEngine:
         if not handler:
             raise ValueError(f"Unhandled node type: {node_type}")
 
-        return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry)
+        return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
 
     @staticmethod
     async def _execute_task(
@@ -224,6 +244,7 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         """
         Execute a single task, handling both sync and async functions.
@@ -320,6 +341,12 @@ class ExecutionEngine:
                             f"Task '{task.id}' input validation failed: {ve}"
                         ) from ve
 
+                # --- Middleware before_task ---
+                if middleware:
+                    for mw in middleware:
+                        data = await mw.before_task(task.id, data, context)
+                    params = {"input_data": data}
+
                 # Execute the task (with optional timeout)
                 if inspect.iscoroutinefunction(task.execute):
                     coro = task.execute(params, context)
@@ -336,6 +363,11 @@ class ExecutionEngine:
                         )
                     else:
                         result = task.execute(params, context)
+
+                # --- Middleware after_task ---
+                if middleware:
+                    for mw in middleware:
+                        result = await mw.after_task(task.id, data, result, context)
 
                 # Validate output against schema if enabled
                 if getattr(task, "validate_schema", False) and hasattr(task, "output_schema"):
@@ -438,6 +470,7 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         # Support conditional skip via 'when' key
         when = node.get("when")
@@ -448,13 +481,13 @@ class ExecutionEngine:
         fallback = node.get("fallback")
 
         try:
-            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
         except Exception:
             if fallback is not None:
                 logger.info(
                     f"Primary task '{task.id}' failed, running fallback task '{fallback.id}'"
                 )
-                return await ExecutionEngine._execute_task(fallback, data, context, storage, node_index, hooks, event_emitter, telemetry)
+                return await ExecutionEngine._execute_task(fallback, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
             raise
 
     @staticmethod
@@ -467,11 +500,12 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         tasks = node["tasks"]
 
         async def execute_single_task(task):
-            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
 
         coroutines = [execute_single_task(task) for task in tasks]
         results: List[OutputData] = await asyncio.gather(*coroutines)
@@ -491,6 +525,7 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         branches = node["branches"]
 
@@ -499,7 +534,7 @@ class ExecutionEngine:
 
             if condition(data):
                 task = branch["task"]
-                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
+                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware)
 
         return data
 
@@ -513,6 +548,7 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         condition = node["condition"]
         task = node["task"]
@@ -557,7 +593,7 @@ class ExecutionEngine:
                     )
 
             current_data = await ExecutionEngine._execute_task(
-                task, current_data, context, storage, node_index, hooks, event_emitter, telemetry
+                task, current_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
             )
             iteration_count += 1
 
@@ -579,6 +615,7 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         """
         Execute a task once per item in a list field, in parallel.
@@ -596,7 +633,7 @@ class ExecutionEngine:
         async def execute_for_item(item):
             item_data = {**data, over_key: item}
             return await ExecutionEngine._execute_task(
-                task, item_data, context, storage, node_index, hooks, event_emitter, telemetry
+                task, item_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
             )
 
         results = await asyncio.gather(*[execute_for_item(item) for item in items])
@@ -612,6 +649,7 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
         telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
     ) -> OutputData:
         """
         Execute tasks as a DAG with automatic parallelization.
@@ -663,7 +701,7 @@ class ExecutionEngine:
                 if dep_id in results:
                     task_data[f"_{dep_id}_output"] = results[dep_id]
             return await ExecutionEngine._execute_task(
-                task, task_data, context, storage, node_index, hooks, event_emitter, telemetry
+                task, task_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware
             )
 
         # Process DAG level by level

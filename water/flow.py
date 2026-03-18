@@ -2,10 +2,10 @@ from typing import Any, List, Optional, Tuple, Dict
 import inspect
 import uuid
 
-from water.execution_engine import ExecutionEngine, NodeType
+from water.execution_engine import ExecutionEngine, NodeType, FlowPausedError, FlowStoppedError
 from water.types import (
-    InputData, 
-    OutputData, 
+    InputData,
+    OutputData,
     ConditionFunction,
     ExecutionNode
 )
@@ -13,44 +13,48 @@ from water.types import (
 class Flow:
     """
     A workflow orchestrator that allows building and executing complex data processing pipelines.
-    
+
     Flows support sequential execution, parallel processing, conditional branching, and loops.
-    All flows must be registered before execution.
+    All flows must be registered before execution. Optionally accepts a storage backend
+    to enable pause, stop, and resume of workflows.
     """
-    
+
     def __init__(
-        self, 
-        id: Optional[str] = None, 
-        description: Optional[str] = None
+        self,
+        id: Optional[str] = None,
+        description: Optional[str] = None,
+        storage: Optional[Any] = None,
     ) -> None:
         """
         Initialize a new Flow.
-        
+
         Args:
             id: Unique identifier for the flow. Auto-generated if not provided.
             description: Human-readable description of the flow's purpose.
+            storage: Optional storage backend for persistence and pause/resume support.
         """
         self.id: str = id if id else f"flow_{uuid.uuid4().hex[:8]}"
         self.description: str = description if description else f"Flow {self.id}"
         self._tasks: List[ExecutionNode] = []
         self._registered: bool = False
         self.metadata: Dict[str, Any] = {}
-    
+        self.storage = storage
+
     def _validate_registration_state(self) -> None:
         """Ensure flow is not registered when adding tasks."""
         if self._registered:
             raise RuntimeError("Cannot add tasks after registration")
-    
+
     def _validate_task(self, task: Any) -> None:
         """Validate that a task is not None."""
         if task is None:
             raise ValueError("Task cannot be None")
-    
+
     def _validate_condition(self, condition: ConditionFunction) -> None:
         """Validate that a condition function is not async."""
         if inspect.iscoroutinefunction(condition):
             raise ValueError("Branch conditions cannot be async functions")
-    
+
     def _validate_loop_condition(self, condition: ConditionFunction) -> None:
         """Validate that a loop condition function is not async."""
         if inspect.iscoroutinefunction(condition):
@@ -59,11 +63,11 @@ class Flow:
     def set_metadata(self, key: str, value: Any) -> 'Flow':
         """
         Set metadata for this flow.
-        
+
         Args:
             key: The metadata key
             value: The metadata value
-            
+
         Returns:
             Self for method chaining
         """
@@ -73,20 +77,20 @@ class Flow:
     def then(self, task: Any) -> 'Flow':
         """
         Add a task to execute sequentially.
-        
+
         Args:
             task: The task to execute
-            
+
         Returns:
             Self for method chaining
-            
+
         Raises:
             RuntimeError: If flow is already registered
             ValueError: If task is None
         """
         self._validate_registration_state()
         self._validate_task(task)
-        
+
         node: ExecutionNode = {"type": NodeType.SEQUENTIAL.value, "task": task}
         self._tasks.append(node)
         return self
@@ -94,13 +98,13 @@ class Flow:
     def parallel(self, tasks: List[Any]) -> 'Flow':
         """
         Add tasks to execute in parallel.
-        
+
         Args:
             tasks: List of tasks to execute concurrently
-            
+
         Returns:
             Self for method chaining
-            
+
         Raises:
             RuntimeError: If flow is already registered
             ValueError: If task list is empty or contains None values
@@ -108,10 +112,10 @@ class Flow:
         self._validate_registration_state()
         if not tasks:
             raise ValueError("Parallel task list cannot be empty")
-        
+
         for task in tasks:
             self._validate_task(task)
-        
+
         node: ExecutionNode = {
             "type": NodeType.PARALLEL.value,
             "tasks": list(tasks)
@@ -122,16 +126,16 @@ class Flow:
     def branch(self, branches: List[Tuple[ConditionFunction, Any]]) -> 'Flow':
         """
         Add conditional branching logic.
-        
+
         Executes the first task whose condition returns True.
         If no conditions match, data passes through unchanged.
-        
+
         Args:
             branches: List of (condition_function, task) tuples
-            
+
         Returns:
             Self for method chaining
-            
+
         Raises:
             RuntimeError: If flow is already registered
             ValueError: If branch list is empty, task is None, or condition is async
@@ -139,11 +143,11 @@ class Flow:
         self._validate_registration_state()
         if not branches:
             raise ValueError("Branch list cannot be empty")
-        
+
         for condition, task in branches:
             self._validate_task(task)
             self._validate_condition(condition)
-        
+
         node: ExecutionNode = {
             "type": NodeType.BRANCH.value,
             "branches": [{"condition": cond, "task": task} for cond, task in branches]
@@ -152,22 +156,22 @@ class Flow:
         return self
 
     def loop(
-        self, 
-        condition: ConditionFunction, 
+        self,
+        condition: ConditionFunction,
         task: Any,
         max_iterations: int = 100
     ) -> 'Flow':
         """
         Execute a task repeatedly while a condition is true.
-        
+
         Args:
             condition: Function that returns True to continue looping
             task: Task to execute on each iteration
             max_iterations: Maximum number of iterations to prevent infinite loops
-            
+
         Returns:
             Self for method chaining
-            
+
         Raises:
             RuntimeError: If flow is already registered
             ValueError: If task is None or condition is async
@@ -175,7 +179,7 @@ class Flow:
         self._validate_registration_state()
         self._validate_task(task)
         self._validate_loop_condition(condition)
-        
+
         node: ExecutionNode = {
             "type": NodeType.LOOP.value,
             "condition": condition,
@@ -188,13 +192,13 @@ class Flow:
     def register(self) -> 'Flow':
         """
         Register the flow for execution.
-        
+
         Must be called before running the flow.
         Once registered, no more tasks can be added.
-        
+
         Returns:
             Self for method chaining
-            
+
         Raises:
             ValueError: If flow has no tasks
         """
@@ -206,22 +210,162 @@ class Flow:
     async def run(self, input_data: InputData) -> OutputData:
         """
         Execute the flow with the provided input data.
-        
+
         Args:
             input_data: Input data dictionary to process
-            
+
         Returns:
             The final output data after all tasks complete
-            
+
         Raises:
             RuntimeError: If flow is not registered
+            FlowPausedError: If the flow was paused during execution
+            FlowStoppedError: If the flow was stopped during execution
         """
         if not self._registered:
             raise RuntimeError("Flow must be registered before running")
-        
+
         return await ExecutionEngine.run(
-            self._tasks, 
-            input_data, 
+            self._tasks,
+            input_data,
             flow_id=self.id,
-            flow_metadata=self.metadata
+            flow_metadata=self.metadata,
+            storage=self.storage,
         )
+
+    async def pause(self, execution_id: str) -> None:
+        """
+        Request a running flow to pause at the next node boundary.
+
+        The flow will save its state and can be resumed later with resume().
+
+        Args:
+            execution_id: The execution ID of the running flow
+
+        Raises:
+            RuntimeError: If no storage backend is configured
+            ValueError: If session not found or not in a pausable state
+        """
+        if not self.storage:
+            raise RuntimeError("Storage backend required for pause/resume")
+
+        from water.storage import FlowStatus
+        session = await self.storage.get_session(execution_id)
+        if not session:
+            raise ValueError(f"No session found for execution: {execution_id}")
+        if session.status != FlowStatus.RUNNING:
+            raise ValueError(
+                f"Cannot pause flow in '{session.status.value}' state "
+                f"(must be 'running')"
+            )
+
+        session.status = FlowStatus.PAUSED
+        await self.storage.save_session(session)
+
+    async def stop(self, execution_id: str) -> None:
+        """
+        Request a running flow to stop at the next node boundary.
+
+        The flow will save its state. Stopped flows cannot be resumed.
+
+        Args:
+            execution_id: The execution ID of the running flow
+
+        Raises:
+            RuntimeError: If no storage backend is configured
+            ValueError: If session not found or not in a stoppable state
+        """
+        if not self.storage:
+            raise RuntimeError("Storage backend required for stop")
+
+        from water.storage import FlowStatus
+        session = await self.storage.get_session(execution_id)
+        if not session:
+            raise ValueError(f"No session found for execution: {execution_id}")
+        if session.status not in (FlowStatus.RUNNING, FlowStatus.PAUSED):
+            raise ValueError(
+                f"Cannot stop flow in '{session.status.value}' state "
+                f"(must be 'running' or 'paused')"
+            )
+
+        session.status = FlowStatus.STOPPED
+        await self.storage.save_session(session)
+
+    async def resume(self, execution_id: str) -> OutputData:
+        """
+        Resume a paused flow from where it left off.
+
+        Args:
+            execution_id: The execution ID of the paused flow
+
+        Returns:
+            The final output data after all remaining tasks complete
+
+        Raises:
+            RuntimeError: If no storage backend is configured or flow not registered
+            ValueError: If session not found or not in 'paused' state
+        """
+        if not self.storage:
+            raise RuntimeError("Storage backend required for resume")
+        if not self._registered:
+            raise RuntimeError("Flow must be registered before resuming")
+
+        from water.storage import FlowStatus
+        session = await self.storage.get_session(execution_id)
+        if not session:
+            raise ValueError(f"No session found for execution: {execution_id}")
+        if session.status != FlowStatus.PAUSED:
+            raise ValueError(
+                f"Cannot resume flow in '{session.status.value}' state "
+                f"(must be 'paused')"
+            )
+
+        resume_from = {
+            "execution_id": session.execution_id,
+            "node_index": session.current_node_index,
+            "data": session.current_data,
+            "context_state": session.context_state,
+        }
+
+        return await ExecutionEngine.run(
+            self._tasks,
+            session.input_data,
+            flow_id=self.id,
+            flow_metadata=self.metadata,
+            storage=self.storage,
+            resume_from=resume_from,
+        )
+
+    async def get_session(self, execution_id: str):
+        """
+        Get the session for a given execution.
+
+        Args:
+            execution_id: The execution ID to look up
+
+        Returns:
+            FlowSession if found, None otherwise
+
+        Raises:
+            RuntimeError: If no storage backend is configured
+        """
+        if not self.storage:
+            raise RuntimeError("Storage backend required")
+        return await self.storage.get_session(execution_id)
+
+    async def get_task_runs(self, execution_id: str):
+        """
+        Get all task runs for a given execution.
+
+        Args:
+            execution_id: The execution ID to look up
+
+        Returns:
+            List of TaskRun records
+
+        Raises:
+            RuntimeError: If no storage backend is configured
+        """
+        if not self.storage:
+            raise RuntimeError("Storage backend required")
+        return await self.storage.get_task_runs(execution_id)

@@ -2,13 +2,13 @@ import inspect
 import asyncio
 import logging
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from water.types import (
-    ExecutionGraph, 
-    ExecutionNode, 
-    InputData, 
+    ExecutionGraph,
+    ExecutionNode,
+    InputData,
     OutputData,
     SequentialNode,
     ParallelNode,
@@ -26,234 +26,353 @@ class NodeType(Enum):
     BRANCH = "branch"
     LOOP = "loop"
 
+
+class FlowPausedError(Exception):
+    """Raised when a flow execution is paused."""
+    pass
+
+
+class FlowStoppedError(Exception):
+    """Raised when a flow execution is stopped."""
+    pass
+
+
 class ExecutionEngine:
     """
     Core execution engine for Water flows.
-    
+
     Orchestrates the execution of different node types including sequential tasks,
-    parallel execution, conditional branching, and loops.
+    parallel execution, conditional branching, and loops. Supports pause/stop/resume
+    via an optional storage backend.
     """
-    
+
     @staticmethod
     async def run(
-        execution_graph: ExecutionGraph, 
+        execution_graph: ExecutionGraph,
         input_data: InputData,
         flow_id: str,
-        flow_metadata: Dict[str, Any] = None
+        flow_metadata: Dict[str, Any] = None,
+        storage: Optional[Any] = None,
+        resume_from: Optional[Dict[str, Any]] = None,
     ) -> OutputData:
         """
         Execute a complete flow execution graph.
-        
+
         Args:
             execution_graph: List of execution nodes to process
             input_data: Initial input data
             flow_id: Unique identifier for the flow execution
             flow_metadata: Optional metadata for the flow
-            
+            storage: Optional storage backend for persistence and pause/resume
+            resume_from: Optional dict with resume state (execution_id, node_index, data, context_state)
+
         Returns:
             Final output data after all nodes are executed
+
+        Raises:
+            FlowPausedError: If the flow was paused during execution
+            FlowStoppedError: If the flow was stopped during execution
         """
-        context = ExecutionContext(
-            flow_id=flow_id,
-            flow_metadata=flow_metadata or {},
-            input_data=input_data
-        )
-        
-        
-        data: OutputData = input_data
-        
-        for node in execution_graph:
-            data = await ExecutionEngine._execute_node(node, data, context)
-        
+        if resume_from:
+            context = ExecutionContext(
+                flow_id=flow_id,
+                execution_id=resume_from["execution_id"],
+                flow_metadata=flow_metadata or {},
+                input_data=input_data,
+            )
+            # Restore context state
+            ctx_state = resume_from.get("context_state", {})
+            context._task_outputs = ctx_state.get("task_outputs", {})
+            context._step_history = ctx_state.get("step_history", [])
+            context.step_number = ctx_state.get("step_number", 0)
+
+            data: OutputData = resume_from["data"]
+            start_index = resume_from["node_index"]
+        else:
+            context = ExecutionContext(
+                flow_id=flow_id,
+                flow_metadata=flow_metadata or {},
+                input_data=input_data
+            )
+            data = input_data
+            start_index = 0
+
+        # Save initial session state if storage is provided
+        if storage:
+            from water.storage import FlowSession, FlowStatus
+            session = await storage.get_session(context.execution_id)
+            if not session:
+                session = FlowSession(
+                    flow_id=flow_id,
+                    input_data=input_data,
+                    execution_id=context.execution_id,
+                    status=FlowStatus.RUNNING,
+                )
+            else:
+                session.status = FlowStatus.RUNNING
+            await storage.save_session(session)
+
+        try:
+            for node_index in range(start_index, len(execution_graph)):
+                # Check for pause/stop signals before each node
+                if storage:
+                    session = await storage.get_session(context.execution_id)
+                    if session and session.status == FlowStatus.PAUSED:
+                        # Save current state for resume
+                        session.current_node_index = node_index
+                        session.current_data = data
+                        session.context_state = {
+                            "task_outputs": context._task_outputs,
+                            "step_history": context._step_history,
+                            "step_number": context.step_number,
+                        }
+                        await storage.save_session(session)
+                        raise FlowPausedError(
+                            f"Flow {flow_id} paused at node {node_index} "
+                            f"(execution: {context.execution_id})"
+                        )
+                    elif session and session.status == FlowStatus.STOPPED:
+                        session.current_node_index = node_index
+                        session.current_data = data
+                        session.context_state = {
+                            "task_outputs": context._task_outputs,
+                            "step_history": context._step_history,
+                            "step_number": context.step_number,
+                        }
+                        await storage.save_session(session)
+                        raise FlowStoppedError(
+                            f"Flow {flow_id} stopped at node {node_index} "
+                            f"(execution: {context.execution_id})"
+                        )
+
+                node = execution_graph[node_index]
+                data = await ExecutionEngine._execute_node(
+                    node, data, context, storage, node_index
+                )
+
+            # Mark as completed
+            if storage:
+                session = await storage.get_session(context.execution_id)
+                if session:
+                    session.status = FlowStatus.COMPLETED
+                    session.result = data
+                    session.current_data = data
+                    session.current_node_index = len(execution_graph)
+                    await storage.save_session(session)
+
+        except (FlowPausedError, FlowStoppedError):
+            raise
+        except Exception as e:
+            if storage:
+                session = await storage.get_session(context.execution_id)
+                if session:
+                    session.status = FlowStatus.FAILED
+                    session.error = str(e)
+                    await storage.save_session(session)
+            raise
+
         return data
-    
+
     @staticmethod
     async def _execute_node(
-        node: ExecutionNode, 
-        data: InputData, 
-        context: ExecutionContext
+        node: ExecutionNode,
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
     ) -> OutputData:
         """
         Route execution to the appropriate node type handler.
-        
-        Args:
-            node: The execution node to process
-            data: Input data for the node
-            context: Execution context
-            
-        Returns:
-            Output data from the node execution
-            
-        Raises:
-            ValueError: If node type is unknown or unhandled
         """
         try:
             node_type = NodeType(node["type"])
         except ValueError:
             raise ValueError(f"Unknown node type: {node['type']}")
-        
+
         handlers = {
             NodeType.SEQUENTIAL: ExecutionEngine._execute_sequential,
             NodeType.PARALLEL: ExecutionEngine._execute_parallel,
             NodeType.BRANCH: ExecutionEngine._execute_branch,
             NodeType.LOOP: ExecutionEngine._execute_loop,
         }
-        
+
         handler = handlers.get(node_type)
         if not handler:
             raise ValueError(f"Unhandled node type: {node_type}")
-            
-        return await handler(node, data, context)
-    
+
+        return await handler(node, data, context, storage, node_index)
+
     @staticmethod
-    async def _execute_task(task: Any, data: InputData, context: ExecutionContext) -> OutputData:
+    async def _execute_task(
+        task: Any,
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
+    ) -> OutputData:
         """
         Execute a single task, handling both sync and async functions.
-        
-        Args:
-            task: The task to execute
-            data: Input data for the task
-            context: Execution context
-            
-        Returns:
-            Output data from the task execution
+        Optionally records the task run in storage.
         """
+        from water.storage import TaskRun
+
         params: Dict[str, InputData] = {"input_data": data}
-        
+
         # Update context with current task info
         context.task_id = task.id
         context.step_start_time = datetime.utcnow()
         context.step_number += 1
-        
-        # Execute the task
-        if inspect.iscoroutinefunction(task.execute):
-            result = await task.execute(params, context)
-        else:
-            result = task.execute(params, context)
-        
-        # Store the task result in context for future tasks to access
-        context.add_task_output(task.id, result)
-        
-        return result
-    
+
+        # Create task run record
+        task_run = None
+        if storage:
+            task_run = TaskRun(
+                execution_id=context.execution_id,
+                task_id=task.id,
+                node_index=node_index,
+                status="running",
+                input_data=data,
+                started_at=datetime.utcnow(),
+            )
+            await storage.save_task_run(task_run)
+
+        try:
+            # Execute the task
+            if inspect.iscoroutinefunction(task.execute):
+                result = await task.execute(params, context)
+            else:
+                result = task.execute(params, context)
+
+            # Store the task result in context for future tasks to access
+            context.add_task_output(task.id, result)
+
+            # Update task run record
+            if storage and task_run:
+                task_run.status = "completed"
+                task_run.output_data = result
+                task_run.completed_at = datetime.utcnow()
+                await storage.save_task_run(task_run)
+
+            return result
+
+        except Exception as e:
+            if storage and task_run:
+                task_run.status = "failed"
+                task_run.error = str(e)
+                task_run.completed_at = datetime.utcnow()
+                await storage.save_task_run(task_run)
+            raise
+
     @staticmethod
     async def _execute_sequential(
-        node: SequentialNode, 
-        data: InputData, 
-        context: ExecutionContext
+        node: SequentialNode,
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
     ) -> OutputData:
-        """
-        Execute a single task sequentially.
-        
-        Args:
-            node: Sequential execution node
-            data: Input data
-            context: Execution context
-            
-        Returns:
-            Task execution result
-        """
         task = node["task"]
-        return await ExecutionEngine._execute_task(task, data, context)
-    
+        return await ExecutionEngine._execute_task(task, data, context, storage, node_index)
+
     @staticmethod
     async def _execute_parallel(
         node: ParallelNode,
         data: InputData,
-        context: ExecutionContext
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
     ) -> OutputData:
-        """
-        Execute multiple tasks in parallel.
-        
-        Args:
-            node: Parallel execution node
-            data: Input data (shared by all tasks)
-            context: Execution context
-            
-        Returns:
-            Dictionary mapping task IDs to their results
-        """
         tasks = node["tasks"]
-        
-        # Create task execution coroutines
+
         async def execute_single_task(task):
-            return await ExecutionEngine._execute_task(task, data, context)
-        
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index)
+
         coroutines = [execute_single_task(task) for task in tasks]
-        
-        # Execute all tasks in parallel
         results: List[OutputData] = await asyncio.gather(*coroutines)
-        
-        # Organize results by task ID
+
         parallel_results = {task.id: result for task, result in zip(tasks, results)}
-        
-        # Store individual parallel results in context (they were already stored by _execute_task)
-        # but also store the combined parallel results as a special entry
         context.add_task_output("_parallel_results", parallel_results)
-        
+
         return parallel_results
-    
+
     @staticmethod
     async def _execute_branch(
-        node: BranchNode, 
-        data: InputData, 
-        context: ExecutionContext
+        node: BranchNode,
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
     ) -> OutputData:
-        """
-        Execute conditional branching - run the first task whose condition matches.
-        
-        Args:
-            node: Branch execution node
-            data: Input data
-            context: Execution context
-            
-        Returns:
-            Result from the executed branch, or input data if no conditions match
-        """
         branches = node["branches"]
-        
+
         for branch in branches:
             condition = branch["condition"]
-            
+
             if condition(data):
                 task = branch["task"]
-                return await ExecutionEngine._execute_task(task, data, context)
-        
-        # If no condition matched, return data unchanged
+                return await ExecutionEngine._execute_task(task, data, context, storage, node_index)
+
         return data
-    
+
     @staticmethod
     async def _execute_loop(
-        node: LoopNode, 
-        data: InputData, 
-        context: ExecutionContext
+        node: LoopNode,
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
     ) -> OutputData:
-        """
-        Execute a task repeatedly while condition is true.
-        
-        Args:
-            node: Loop execution node
-            data: Initial input data
-            context: Execution context
-            
-        Returns:
-            Final data after loop completion
-        """
         condition = node["condition"]
         task = node["task"]
         max_iterations: int = node.get("max_iterations", 100)
-        
+
         iteration_count: int = 0
         current_data: OutputData = data
-        
+
         while iteration_count < max_iterations:
             if not condition(current_data):
                 break
-            
-            current_data = await ExecutionEngine._execute_task(task, current_data, context)
+
+            # Check for pause/stop signals during loops
+            if storage:
+                from water.storage import FlowStatus
+                session = await storage.get_session(context.execution_id)
+                if session and session.status == FlowStatus.PAUSED:
+                    session.current_node_index = node_index
+                    session.current_data = current_data
+                    session.context_state = {
+                        "task_outputs": context._task_outputs,
+                        "step_history": context._step_history,
+                        "step_number": context.step_number,
+                    }
+                    await storage.save_session(session)
+                    raise FlowPausedError(
+                        f"Flow paused during loop at node {node_index}, "
+                        f"iteration {iteration_count}"
+                    )
+                elif session and session.status == FlowStatus.STOPPED:
+                    session.current_node_index = node_index
+                    session.current_data = current_data
+                    session.context_state = {
+                        "task_outputs": context._task_outputs,
+                        "step_history": context._step_history,
+                        "step_number": context.step_number,
+                    }
+                    await storage.save_session(session)
+                    raise FlowStoppedError(
+                        f"Flow stopped during loop at node {node_index}, "
+                        f"iteration {iteration_count}"
+                    )
+
+            current_data = await ExecutionEngine._execute_task(
+                task, current_data, context, storage, node_index
+            )
             iteration_count += 1
-        
+
         if iteration_count >= max_iterations:
-            logger.warning(f"Loop reached maximum iterations ({max_iterations}) for flow {context.flow_id}")
-            
+            logger.warning(
+                f"Loop reached maximum iterations ({max_iterations}) "
+                f"for flow {context.flow_id}"
+            )
+
         return current_data

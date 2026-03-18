@@ -1,4 +1,6 @@
 import argparse
+import asyncio
+import importlib
 import json
 import os
 import sys
@@ -8,6 +10,162 @@ from pathlib import Path
 
 
 RENDER_API_BASE = "https://api.render.com/v1"
+
+
+def _import_flow(spec: str):
+    """
+    Import a Flow object from a 'module:var' specification.
+
+    Args:
+        spec: A string in the format "module:variable_name"
+              (e.g., "cookbook.sequential_flow:registration_flow")
+
+    Returns:
+        The Flow object referenced by the spec.
+
+    Raises:
+        ValueError: If the spec format is invalid.
+        ImportError: If the module cannot be imported.
+        AttributeError: If the variable is not found in the module.
+        TypeError: If the variable is not a Flow instance.
+    """
+    from water.flow import Flow
+
+    if ":" not in spec:
+        raise ValueError(
+            f"Invalid spec '{spec}'. Expected format 'module:variable' "
+            f"(e.g., 'cookbook.sequential_flow:registration_flow')"
+        )
+
+    module_path, var_name = spec.rsplit(":", 1)
+    module = importlib.import_module(module_path)
+    obj = getattr(module, var_name)
+
+    if not isinstance(obj, Flow):
+        raise TypeError(
+            f"'{var_name}' in '{module_path}' is not a Flow instance "
+            f"(got {type(obj).__name__})"
+        )
+
+    return obj
+
+
+def _find_flows_in_module(module_path: str):
+    """
+    Import a module and find all Flow instances defined in it.
+
+    Args:
+        module_path: Dotted module path (e.g., "cookbook.sequential_flow").
+
+    Returns:
+        List of (variable_name, flow_object) tuples.
+    """
+    from water.flow import Flow
+
+    module = importlib.import_module(module_path)
+    flows = []
+    for name in dir(module):
+        obj = getattr(module, name)
+        if isinstance(obj, Flow):
+            flows.append((name, obj))
+    return flows
+
+
+def cmd_run(args):
+    """Handle 'water run <module:flow_var>' command."""
+    try:
+        flow = _import_flow(args.flow)
+    except (ValueError, ImportError, AttributeError, TypeError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    input_data = {}
+    if args.input:
+        try:
+            input_data = json.loads(args.input)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    try:
+        result = asyncio.run(flow.run(input_data))
+        print(json.dumps(result, indent=2, default=str))
+    except Exception as e:
+        print(f"Error running flow: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_visualize(args):
+    """Handle 'water visualize <module:flow_var>' command."""
+    try:
+        flow = _import_flow(args.flow)
+    except (ValueError, ImportError, AttributeError, TypeError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        diagram = flow.visualize()
+    except Exception as e:
+        print(f"Error generating visualization: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.output:
+        output_path = Path(args.output)
+        output_path.write_text(diagram + "\n")
+        print(f"Diagram saved to {output_path}")
+    else:
+        print(diagram)
+
+
+def cmd_dry_run(args):
+    """Handle 'water dry-run <module:flow_var>' command."""
+    try:
+        flow = _import_flow(args.flow)
+    except (ValueError, ImportError, AttributeError, TypeError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    input_data = {}
+    if args.input:
+        try:
+            input_data = json.loads(args.input)
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON input: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    try:
+        report = asyncio.run(flow.dry_run(input_data))
+        print(json.dumps(report, indent=2, default=str))
+    except Exception as e:
+        print(f"Error during dry run: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_list(args):
+    """Handle 'water list <module>' command."""
+    try:
+        flows = _find_flows_in_module(args.module)
+    except ImportError as e:
+        print(f"Error: Could not import module '{args.module}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not flows:
+        print(f"No Flow instances found in '{args.module}'.")
+        return
+
+    # Print table header
+    header = f"{'Variable':<30} {'Flow ID':<25} {'Description':<35} {'Tasks':<6} {'Version':<10}"
+    print(header)
+    print("-" * len(header))
+
+    for var_name, flow in flows:
+        task_count = len(flow._tasks)
+        version = flow.version or "-"
+        description = flow.description or "-"
+        # Truncate long descriptions
+        if len(description) > 33:
+            description = description[:30] + "..."
+        print(f"{var_name:<30} {flow.id:<25} {description:<35} {task_count:<6} {version:<10}")
 
 
 def _find_app_module():
@@ -225,6 +383,61 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    # water run <module:flow_var> --input '{...}'
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a flow from the terminal",
+    )
+    run_parser.add_argument(
+        "flow",
+        help="Flow spec in 'module:variable' format (e.g., 'cookbook.sequential_flow:registration_flow')",
+    )
+    run_parser.add_argument(
+        "--input",
+        default=None,
+        help="Input data as a JSON string (e.g., '{\"key\": \"value\"}')",
+    )
+
+    # water visualize <module:flow_var> [--output file.md]
+    viz_parser = subparsers.add_parser(
+        "visualize",
+        help="Generate a Mermaid diagram of a flow",
+    )
+    viz_parser.add_argument(
+        "flow",
+        help="Flow spec in 'module:variable' format",
+    )
+    viz_parser.add_argument(
+        "--output",
+        default=None,
+        help="Save diagram to a file instead of printing to stdout",
+    )
+
+    # water dry-run <module:flow_var> --input '{...}'
+    dryrun_parser = subparsers.add_parser(
+        "dry-run",
+        help="Validate a flow without executing tasks",
+    )
+    dryrun_parser.add_argument(
+        "flow",
+        help="Flow spec in 'module:variable' format",
+    )
+    dryrun_parser.add_argument(
+        "--input",
+        default=None,
+        help="Input data as a JSON string",
+    )
+
+    # water list <module>
+    list_parser = subparsers.add_parser(
+        "list",
+        help="List all Flow instances in a module",
+    )
+    list_parser.add_argument(
+        "module",
+        help="Dotted module path (e.g., 'cookbook.sequential_flow')",
+    )
+
     # water flow
     flow_parser = subparsers.add_parser("flow", help="Flow management commands")
     flow_subparsers = flow_parser.add_subparsers(dest="flow_command", help="Flow subcommands")
@@ -273,7 +486,15 @@ def main():
         parser.print_help()
         sys.exit(0)
 
-    if args.command == "flow":
+    if args.command == "run":
+        cmd_run(args)
+    elif args.command == "visualize":
+        cmd_visualize(args)
+    elif args.command == "dry-run":
+        cmd_dry_run(args)
+    elif args.command == "list":
+        cmd_list(args)
+    elif args.command == "flow":
         if args.flow_command == "prod:render":
             cmd_flow_prod_render(args)
         else:

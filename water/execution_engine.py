@@ -55,6 +55,7 @@ class ExecutionEngine:
         storage: Optional[Any] = None,
         resume_from: Optional[Dict[str, Any]] = None,
         hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a complete flow execution graph.
@@ -148,7 +149,7 @@ class ExecutionEngine:
 
                 node = execution_graph[node_index]
                 data = await ExecutionEngine._execute_node(
-                    node, data, context, storage, node_index, hooks
+                    node, data, context, storage, node_index, hooks, event_emitter
                 )
 
             # Mark as completed
@@ -182,6 +183,7 @@ class ExecutionEngine:
         storage: Optional[Any] = None,
         node_index: int = 0,
         hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
     ) -> OutputData:
         """
         Route execution to the appropriate node type handler.
@@ -202,7 +204,7 @@ class ExecutionEngine:
         if not handler:
             raise ValueError(f"Unhandled node type: {node_type}")
 
-        return await handler(node, data, context, storage, node_index, hooks)
+        return await handler(node, data, context, storage, node_index, hooks, event_emitter)
 
     @staticmethod
     async def _execute_task(
@@ -212,10 +214,11 @@ class ExecutionEngine:
         storage: Optional[Any] = None,
         node_index: int = 0,
         hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a single task, handling both sync and async functions.
-        Supports retry with backoff, per-task timeouts, hooks, and storage recording.
+        Supports retry with backoff, per-task timeouts, hooks, events, and storage recording.
         """
         from water.storage import TaskRun
 
@@ -233,7 +236,7 @@ class ExecutionEngine:
         max_attempts = retry_count + 1
         last_error = None
 
-        # Emit task start hook
+        # Emit task start hook and event
         if hooks:
             await hooks.emit(
                 "on_task_start",
@@ -241,6 +244,13 @@ class ExecutionEngine:
                 input_data=data,
                 context=context,
             )
+        if event_emitter:
+            from water.events import FlowEvent
+            await event_emitter.emit(FlowEvent(
+                "task_start", context.flow_id,
+                task_id=task.id, execution_id=context.execution_id,
+                data={"input": data},
+            ))
 
         for attempt in range(1, max_attempts + 1):
             context.attempt_number = attempt
@@ -286,7 +296,7 @@ class ExecutionEngine:
                     task_run.completed_at = datetime.utcnow()
                     await storage.save_task_run(task_run)
 
-                # Emit task complete hook
+                # Emit task complete hook and event
                 if hooks:
                     await hooks.emit(
                         "on_task_complete",
@@ -295,6 +305,13 @@ class ExecutionEngine:
                         output_data=result,
                         context=context,
                     )
+                if event_emitter:
+                    from water.events import FlowEvent
+                    await event_emitter.emit(FlowEvent(
+                        "task_complete", context.flow_id,
+                        task_id=task.id, execution_id=context.execution_id,
+                        data={"output": result},
+                    ))
 
                 return result
 
@@ -315,7 +332,7 @@ class ExecutionEngine:
                         f"after error: {e}"
                     )
                 else:
-                    # Emit task error hook
+                    # Emit task error hook and event
                     if hooks:
                         await hooks.emit(
                             "on_task_error",
@@ -324,6 +341,13 @@ class ExecutionEngine:
                             error=last_error,
                             context=context,
                         )
+                    if event_emitter:
+                        from water.events import FlowEvent
+                        await event_emitter.emit(FlowEvent(
+                            "task_error", context.flow_id,
+                            task_id=task.id, execution_id=context.execution_id,
+                            data={"error": str(last_error)},
+                        ))
                     raise last_error
 
     @staticmethod
@@ -334,9 +358,10 @@ class ExecutionEngine:
         storage: Optional[Any] = None,
         node_index: int = 0,
         hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
     ) -> OutputData:
         task = node["task"]
-        return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks)
+        return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter)
 
     @staticmethod
     async def _execute_parallel(
@@ -346,11 +371,12 @@ class ExecutionEngine:
         storage: Optional[Any] = None,
         node_index: int = 0,
         hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
     ) -> OutputData:
         tasks = node["tasks"]
 
         async def execute_single_task(task):
-            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks)
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter)
 
         coroutines = [execute_single_task(task) for task in tasks]
         results: List[OutputData] = await asyncio.gather(*coroutines)
@@ -368,6 +394,7 @@ class ExecutionEngine:
         storage: Optional[Any] = None,
         node_index: int = 0,
         hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
     ) -> OutputData:
         branches = node["branches"]
 
@@ -376,7 +403,7 @@ class ExecutionEngine:
 
             if condition(data):
                 task = branch["task"]
-                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks)
+                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter)
 
         return data
 
@@ -388,6 +415,7 @@ class ExecutionEngine:
         storage: Optional[Any] = None,
         node_index: int = 0,
         hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
     ) -> OutputData:
         condition = node["condition"]
         task = node["task"]
@@ -432,7 +460,7 @@ class ExecutionEngine:
                     )
 
             current_data = await ExecutionEngine._execute_task(
-                task, current_data, context, storage, node_index, hooks
+                task, current_data, context, storage, node_index, hooks, event_emitter
             )
             iteration_count += 1
 

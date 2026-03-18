@@ -11,6 +11,7 @@ from .storage import (
 )
 from .execution_engine import FlowPausedError, FlowStoppedError
 from .hooks import HookManager
+from .events import EventEmitter, FlowEvent, EventSubscription
 
 __all__ = [
     "Flow",
@@ -26,4 +27,7 @@ __all__ = [
     "FlowPausedError",
     "FlowStoppedError",
     "HookManager",
+    "EventEmitter",
+    "FlowEvent",
+    "EventSubscription",
 ]

@@ -43,6 +43,7 @@ class Flow:
         self.metadata: Dict[str, Any] = {}
         self.storage = storage
         self.hooks = HookManager()
+        self.events: Optional[Any] = None
 
     def _validate_registration_state(self) -> None:
         """Ensure flow is not registered when adding tasks."""
@@ -290,6 +291,10 @@ class Flow:
 
         await self.hooks.emit("on_flow_start", flow_id=self.id, input_data=input_data)
 
+        if self.events:
+            from water.events import FlowEvent
+            await self.events.emit(FlowEvent("flow_start", self.id, data={"input": input_data}))
+
         try:
             result = await ExecutionEngine.run(
                 self._tasks,
@@ -298,13 +303,20 @@ class Flow:
                 flow_metadata=self.metadata,
                 storage=self.storage,
                 hooks=self.hooks,
+                event_emitter=self.events,
             )
             await self.hooks.emit("on_flow_complete", flow_id=self.id, output_data=result)
+            if self.events:
+                await self.events.emit(FlowEvent("flow_complete", self.id, data={"output": result}))
+                await self.events.close()
             return result
         except (FlowPausedError, FlowStoppedError):
             raise
         except Exception as e:
             await self.hooks.emit("on_flow_error", flow_id=self.id, error=e)
+            if self.events:
+                await self.events.emit(FlowEvent("flow_error", self.id, data={"error": str(e)}))
+                await self.events.close()
             raise
 
     async def pause(self, execution_id: str) -> None:

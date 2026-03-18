@@ -27,6 +27,7 @@ class Flow:
         id: Optional[str] = None,
         description: Optional[str] = None,
         storage: Optional[Any] = None,
+        version: Optional[str] = None,
     ) -> None:
         """
         Initialize a new Flow.
@@ -35,9 +36,11 @@ class Flow:
             id: Unique identifier for the flow. Auto-generated if not provided.
             description: Human-readable description of the flow's purpose.
             storage: Optional storage backend for persistence and pause/resume support.
+            version: Optional version string for tracking flow schema changes.
         """
         self.id: str = id if id else f"flow_{uuid.uuid4().hex[:8]}"
         self.description: str = description if description else f"Flow {self.id}"
+        self.version: Optional[str] = version
         self._tasks: List[ExecutionNode] = []
         self._registered: bool = False
         self.metadata: Dict[str, Any] = {}
@@ -326,6 +329,9 @@ class Flow:
         if not self._registered:
             raise RuntimeError("Flow must be registered before running")
 
+        if self.version:
+            self.metadata["_flow_version"] = self.version
+
         await self.hooks.emit("on_flow_start", flow_id=self.id, input_data=input_data)
 
         if self.events:
@@ -442,6 +448,18 @@ class Flow:
                 f"Cannot resume flow in '{session.status.value}' state "
                 f"(must be 'paused')"
             )
+
+        # Check for version mismatch between paused session and current flow
+        if self.version:
+            import logging
+            _logger = logging.getLogger(__name__)
+            session_version = session.context_state.get("flow_version")
+            if session_version and session_version != self.version:
+                _logger.warning(
+                    f"Flow version mismatch on resume: session was paused with "
+                    f"v{session_version} but current flow is v{self.version}. "
+                    f"Execution may produce unexpected results."
+                )
 
         resume_from = {
             "execution_id": session.execution_id,

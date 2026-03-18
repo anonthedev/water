@@ -128,6 +128,7 @@ class ExecutionEngine:
                             "task_outputs": context._task_outputs,
                             "step_history": context._step_history,
                             "step_number": context.step_number,
+                            "flow_version": context.flow_metadata.get("_flow_version"),
                         }
                         await storage.save_session(session)
                         raise FlowPausedError(
@@ -141,6 +142,7 @@ class ExecutionEngine:
                             "task_outputs": context._task_outputs,
                             "step_history": context._step_history,
                             "step_number": context.step_number,
+                            "flow_version": context.flow_metadata.get("_flow_version"),
                         }
                         await storage.save_session(session)
                         raise FlowStoppedError(

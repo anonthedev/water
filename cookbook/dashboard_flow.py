@@ -1,14 +1,18 @@
 """
-Dashboard Flow Example: Inspecting Flow Execution State
+Dashboard Flow Example: Server-Integrated Dashboard
 
-This example shows how to use FlowDashboard to observe flow executions.
-It runs a simple flow, then uses the dashboard to inspect the stored
-sessions and task runs.
+This example shows how to use FlowDashboard integrated with FlowServer.
+The dashboard is served at /dashboard and provides a React SPA for
+inspecting flow executions, sessions, and task runs.
+
+Run with:
+    uvicorn cookbook.dashboard_flow:app --host 0.0.0.0 --port 8000
+
+Then visit http://localhost:8000/dashboard
 """
 
-import asyncio
 from pydantic import BaseModel
-from water import Flow, create_task, InMemoryStorage, FlowDashboard, FlowSession, FlowStatus
+from water import Flow, create_task, FlowServer, InMemoryStorage, FlowDashboard
 
 
 # --- Define a simple flow ---
@@ -24,64 +28,27 @@ def add_one(payload, context):
     return {"value": payload["input_data"]["value"] + 1}
 
 
-async def main():
-    # Set up storage and dashboard
-    storage = InMemoryStorage()
-    dashboard = FlowDashboard(storage)
+# Set up shared storage
+storage = InMemoryStorage()
 
-    # Create and run a flow
-    task = create_task(
-        id="add_one",
-        description="Adds one to the input value",
-        input_schema=AddInput,
-        output_schema=AddOutput,
-        execute=add_one,
-    )
-    flow = Flow(id="addition_flow", description="Simple addition flow")
-    flow.then(task).register()
+# Create task and flow
+task = create_task(
+    id="add_one",
+    description="Adds one to the input value",
+    input_schema=AddInput,
+    output_schema=AddOutput,
+    execute=add_one,
+)
+flow = Flow(id="addition_flow", description="Simple addition flow", storage=storage)
+flow.then(task).register()
 
-    # Simulate saving a completed session to storage
-    session = FlowSession(
-        flow_id="addition_flow",
-        input_data={"value": 5},
-        execution_id="exec_demo_001",
-        status=FlowStatus.COMPLETED,
-        result={"value": 6},
-    )
-    await storage.save_session(session)
+# Create the server with storage to enable the dashboard
+server = FlowServer(flows=[flow], storage=storage)
+app = server.get_app()
 
-    # Also save a failed session for contrast
-    failed_session = FlowSession(
-        flow_id="addition_flow",
-        input_data={"value": -1},
-        execution_id="exec_demo_002",
-        status=FlowStatus.FAILED,
-        error="Negative values not allowed",
-    )
-    await storage.save_session(failed_session)
-
-    # --- Use the dashboard to inspect state ---
-
-    # 1. Get aggregate stats
-    stats = await dashboard.get_stats()
-    print("=== Flow Stats ===")
-    print(f"Total sessions: {stats['total_sessions']}")
-    print(f"By status: {stats['by_status']}")
-    print()
-
-    # 2. Render the main dashboard HTML
-    dashboard_html = await dashboard.get_dashboard_html()
-    print("=== Dashboard HTML (first 500 chars) ===")
-    print(dashboard_html[:500])
-    print("...")
-    print()
-
-    # 3. Render a session detail page
-    detail_html = await dashboard.get_session_detail_html("exec_demo_001")
-    print("=== Session Detail HTML (first 500 chars) ===")
-    print(detail_html[:500])
-    print("...")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+# Visit http://localhost:8000/dashboard to see the React dashboard
+# API endpoints available:
+#   GET /api/dashboard/stats      - Aggregate session statistics
+#   GET /api/dashboard/sessions   - List sessions (supports ?flow_id=, ?limit=, ?offset=)
+#   GET /api/dashboard/sessions/{execution_id} - Session detail with task runs
+#   GET /api/dashboard/flows      - Flow summaries

@@ -1,9 +1,11 @@
 from typing import List, Dict, Any, Optional, Type
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from datetime import datetime
 
 from water.flow import Flow
+from water.dashboard import FlowDashboard
 
 
 class RunFlowRequest(BaseModel):
@@ -58,13 +60,14 @@ class FlowServer:
             uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
     """
     
-    def __init__(self, flows: List[Flow]) -> None:
+    def __init__(self, flows: List[Flow], storage: Optional[Any] = None) -> None:
         """
         Initialize FlowServer with a list of flows.
-        
+
         Args:
             flows: List of registered Flow instances
-            
+            storage: Optional storage backend for dashboard functionality
+
         Raises:
             ValueError: If flows contain duplicates or unregistered flows
         """
@@ -75,6 +78,8 @@ class FlowServer:
             if not flow._registered:
                 raise ValueError(f"Flow {flow.id} must be registered before adding to server")
             self.flows[flow.id] = flow
+
+        self.dashboard = FlowDashboard(storage) if storage else None
     
     def _serialize_schema(self, schema_class: Type[BaseModel]) -> Optional[Dict[str, str]]:
         """
@@ -269,4 +274,29 @@ class FlowServer:
                     }
                 )
         
+        # Dashboard routes (only if storage was provided)
+        if self.dashboard:
+            @app.get("/dashboard", response_class=HTMLResponse)
+            async def serve_dashboard():
+                return self.dashboard.get_spa_html()
+
+            @app.get("/api/dashboard/stats")
+            async def dashboard_stats():
+                return await self.dashboard.get_stats()
+
+            @app.get("/api/dashboard/sessions")
+            async def dashboard_sessions(flow_id: str = None, limit: int = 50, offset: int = 0):
+                return await self.dashboard.get_sessions_list(flow_id=flow_id, limit=limit, offset=offset)
+
+            @app.get("/api/dashboard/sessions/{execution_id}")
+            async def dashboard_session_detail(execution_id: str):
+                detail = await self.dashboard.get_session_detail(execution_id)
+                if detail is None:
+                    raise HTTPException(status_code=404, detail="Session not found")
+                return detail
+
+            @app.get("/api/dashboard/flows")
+            async def dashboard_flows():
+                return self.dashboard.get_flows_summary(self.flows)
+
         return app 

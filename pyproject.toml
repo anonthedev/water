@@ -62,6 +62,9 @@ dev = [
     "pytest-asyncio>=0.21.0",
 ]
 
+[project.scripts]
+water = "water.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/manthanguptaa/water"
 Repository = "https://github.com/manthanguptaa/water"

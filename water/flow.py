@@ -1,6 +1,8 @@
-from typing import Any, List, Optional, Tuple, Dict
+from typing import Any, List, Optional, Tuple, Dict, Type
 import inspect
 import uuid
+
+from pydantic import BaseModel
 
 from water.execution_engine import ExecutionEngine, NodeType, FlowPausedError, FlowStoppedError
 from water.hooks import HookManager
@@ -52,6 +54,13 @@ class Flow:
         if task is None:
             raise ValueError("Task cannot be None")
 
+    @staticmethod
+    def _coerce_task(task: Any) -> Any:
+        """Convert a Flow to a Task if needed."""
+        if isinstance(task, Flow):
+            return task.as_task()
+        return task
+
     def _validate_condition(self, condition: ConditionFunction) -> None:
         """Validate that a condition function is not async."""
         if inspect.iscoroutinefunction(condition):
@@ -91,6 +100,7 @@ class Flow:
             ValueError: If task is None
         """
         self._validate_registration_state()
+        task = self._coerce_task(task)
         self._validate_task(task)
 
         node: ExecutionNode = {"type": NodeType.SEQUENTIAL.value, "task": task}
@@ -102,7 +112,7 @@ class Flow:
         Add tasks to execute in parallel.
 
         Args:
-            tasks: List of tasks to execute concurrently
+            tasks: List of tasks or Flows to execute concurrently
 
         Returns:
             Self for method chaining
@@ -115,12 +125,13 @@ class Flow:
         if not tasks:
             raise ValueError("Parallel task list cannot be empty")
 
-        for task in tasks:
+        coerced = [self._coerce_task(t) for t in tasks]
+        for task in coerced:
             self._validate_task(task)
 
         node: ExecutionNode = {
             "type": NodeType.PARALLEL.value,
-            "tasks": list(tasks)
+            "tasks": list(coerced)
         }
         self._tasks.append(node)
         return self
@@ -133,7 +144,7 @@ class Flow:
         If no conditions match, data passes through unchanged.
 
         Args:
-            branches: List of (condition_function, task) tuples
+            branches: List of (condition_function, task_or_flow) tuples
 
         Returns:
             Self for method chaining
@@ -146,13 +157,14 @@ class Flow:
         if not branches:
             raise ValueError("Branch list cannot be empty")
 
-        for condition, task in branches:
+        coerced_branches = [(cond, self._coerce_task(task)) for cond, task in branches]
+        for condition, task in coerced_branches:
             self._validate_task(task)
             self._validate_condition(condition)
 
         node: ExecutionNode = {
             "type": NodeType.BRANCH.value,
-            "branches": [{"condition": cond, "task": task} for cond, task in branches]
+            "branches": [{"condition": cond, "task": task} for cond, task in coerced_branches]
         }
         self._tasks.append(node)
         return self
@@ -179,6 +191,7 @@ class Flow:
             ValueError: If task is None or condition is async
         """
         self._validate_registration_state()
+        task = self._coerce_task(task)
         self._validate_task(task)
         self._validate_loop_condition(condition)
 
@@ -190,6 +203,54 @@ class Flow:
         }
         self._tasks.append(node)
         return self
+
+    def as_task(
+        self,
+        input_schema: Optional[Type[BaseModel]] = None,
+        output_schema: Optional[Type[BaseModel]] = None,
+    ) -> Any:
+        """
+        Convert this flow into a Task that can be used inside another flow.
+
+        Args:
+            input_schema: Pydantic model for input (defaults to a generic dict model)
+            output_schema: Pydantic model for output (defaults to a generic dict model)
+
+        Returns:
+            A Task instance that executes this sub-flow
+        """
+        from water.task import Task
+
+        if not self._registered:
+            raise RuntimeError("Sub-flow must be registered before converting to task")
+
+        # Default generic schemas
+        if not input_schema:
+            input_schema = type(
+                f"{self.id}_Input",
+                (BaseModel,),
+                {"__annotations__": {"data": Dict[str, Any]}},
+            )
+        if not output_schema:
+            output_schema = type(
+                f"{self.id}_Output",
+                (BaseModel,),
+                {"__annotations__": {"data": Dict[str, Any]}},
+            )
+
+        sub_flow = self
+
+        async def execute_sub_flow(params, context):
+            input_data = params["input_data"]
+            return await sub_flow.run(input_data)
+
+        return Task(
+            id=f"subflow_{self.id}",
+            description=f"Sub-flow: {self.description}",
+            input_schema=input_schema,
+            output_schema=output_schema,
+            execute=execute_sub_flow,
+        )
 
     def register(self) -> 'Flow':
         """

@@ -52,6 +52,7 @@ class Flow:
         self.checkpoint: Optional[Any] = None
         self.middleware: List[Any] = []
         self.dlq: Optional[Any] = None
+        self.secrets: Optional[Any] = None
         self._services: Dict[str, Any] = {}
 
     def _validate_registration_state(self) -> None:
@@ -413,6 +414,9 @@ class Flow:
 
         if self.version:
             self.metadata["_flow_version"] = self.version
+
+        if self.secrets is not None:
+            self._services["secrets"] = self.secrets
 
         await self.hooks.emit("on_flow_start", flow_id=self.id, input_data=input_data)
 

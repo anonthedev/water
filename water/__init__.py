@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# water — Python agent harness & workflow orchestration framework
+# water — The production-ready agent harness framework for Python
 # ---------------------------------------------------------------------------
 # Subpackage layout:
 #   water.core          – Flow, Task, ExecutionEngine, Context

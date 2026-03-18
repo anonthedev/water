@@ -5,30 +5,34 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "water-ai"
 version = "0.1.0"
-description = "A multi-agent orchestration framework that works with any agent framework"
+description = "The production-ready agent harness framework for Python"
 authors = [
     {name = "Manthan Gupta", email = "manthangupta109@gmail.com"}
 ]
 keywords = [
   "water-ai",
+  "agent-harness",
+  "harness-engineering",
   "multi-agent",
-  "orchestration", 
+  "orchestration",
   "llm",
   "large-language-model",
-  "framework",
   "agents",
-  "ai-agents", 
+  "ai-agents",
   "workflow",
   "pipeline",
+  "mcp",
+  "model-context-protocol",
   "langchain",
   "crewai",
   "agno",
   "autogen",
-  "distributed",
   "async",
-  "coordination",
   "agent-framework",
-  "multi-agent-systems"
+  "multi-agent-systems",
+  "approval-gates",
+  "sandboxing",
+  "observability",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -63,7 +67,7 @@ dev = [
 ]
 
 [project.scripts]
-water = "water.cli:main"
+water = "water.utils.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/manthanguptaa/water"

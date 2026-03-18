@@ -1,6 +1,6 @@
 # Water
 
-**A multi-agent orchestration framework that works with any agent framework.**
+**The production-ready agent harness framework for Python.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PyPI](https://img.shields.io/pypi/v/water-ai)](https://pypi.org/project/water-ai/)
@@ -8,7 +8,9 @@
 
 ## Overview
 
-Water is a production-ready orchestration framework for building complex multi-agent systems without being locked into a specific agent framework. Whether you use LangChain, CrewAI, Agno, or custom agents, Water provides the orchestration layer to coordinate and scale your workflows.
+Water is an agent harness framework — it provides the infrastructure *around* your AI agents, not the agents themselves. Orchestration, resilience, observability, approval gates, sandboxing, and deployment tooling so you can focus on what your agents actually do.
+
+Works with any agent framework: LangChain, CrewAI, Agno, OpenAI, Anthropic, or your own custom agents.
 
 ## Installation
 

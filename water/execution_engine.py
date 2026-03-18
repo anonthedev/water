@@ -55,8 +55,10 @@ class ExecutionEngine:
         """
         context = ExecutionContext(
             flow_id=flow_id,
-            flow_metadata=flow_metadata or {}
+            flow_metadata=flow_metadata or {},
+            input_data=input_data
         )
+        
         
         data: OutputData = input_data
         

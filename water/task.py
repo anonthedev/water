@@ -3,11 +3,10 @@ from pydantic import BaseModel
 from water.exceptions import WaterError
 import uuid
 
-from water.types import InputData, OutputData
-
 # Import here to avoid circular imports
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
+    from water.types import InputData, OutputData
     from water.context import ExecutionContext
 
 class Task:
@@ -23,7 +22,7 @@ class Task:
         self, 
         input_schema: Type[BaseModel],
         output_schema: Type[BaseModel],
-        execute: Callable[[Dict[str, InputData], 'ExecutionContext'], OutputData], 
+        execute: Callable[[Dict[str, 'InputData'], 'ExecutionContext'], 'OutputData'], 
         id: Optional[str] = None, 
         description: Optional[str] = None
     ) -> None:
@@ -61,7 +60,7 @@ def create_task(
     description: Optional[str] = None, 
     input_schema: Optional[Type[BaseModel]] = None, 
     output_schema: Optional[Type[BaseModel]] = None, 
-    execute: Optional[Callable[[Dict[str, InputData], 'ExecutionContext'], OutputData]] = None
+    execute: Optional[Callable[[Dict[str, 'InputData'], 'ExecutionContext'], 'OutputData']] = None
 ) -> Task:
     """
     Factory function to create a Task instance.

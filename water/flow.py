@@ -86,12 +86,14 @@ class Flow:
         self.metadata[key] = value
         return self
 
-    def then(self, task: Any) -> 'Flow':
+    def then(self, task: Any, when: Optional[ConditionFunction] = None) -> 'Flow':
         """
         Add a task to execute sequentially.
 
         Args:
             task: The task to execute
+            when: Optional condition function. If provided and returns False,
+                  the task is skipped and data passes through unchanged.
 
         Returns:
             Self for method chaining
@@ -103,8 +105,43 @@ class Flow:
         self._validate_registration_state()
         task = self._coerce_task(task)
         self._validate_task(task)
+        if when is not None:
+            self._validate_condition(when)
 
         node: ExecutionNode = {"type": NodeType.SEQUENTIAL.value, "task": task}
+        if when is not None:
+            node["when"] = when
+        self._tasks.append(node)
+        return self
+
+    def map(self, task: Any, over: str) -> 'Flow':
+        """
+        Execute a task once per item in a list field, in parallel.
+
+        Args:
+            task: The task to execute for each item
+            over: Key in the input data containing the list to iterate over.
+                  Each task invocation receives the full data dict with that
+                  key replaced by the individual item.
+
+        Returns:
+            Self for method chaining
+
+        Raises:
+            RuntimeError: If flow is already registered
+            ValueError: If task is None or over is empty
+        """
+        self._validate_registration_state()
+        task = self._coerce_task(task)
+        self._validate_task(task)
+        if not over:
+            raise ValueError("Map 'over' key cannot be empty")
+
+        node: ExecutionNode = {
+            "type": NodeType.MAP.value,
+            "task": task,
+            "over": over,
+        }
         self._tasks.append(node)
         return self
 

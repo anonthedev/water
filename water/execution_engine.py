@@ -25,6 +25,7 @@ class NodeType(Enum):
     PARALLEL = "parallel"
     BRANCH = "branch"
     LOOP = "loop"
+    MAP = "map"
 
 
 class FlowPausedError(Exception):
@@ -198,6 +199,7 @@ class ExecutionEngine:
             NodeType.PARALLEL: ExecutionEngine._execute_parallel,
             NodeType.BRANCH: ExecutionEngine._execute_branch,
             NodeType.LOOP: ExecutionEngine._execute_loop,
+            NodeType.MAP: ExecutionEngine._execute_map,
         }
 
         handler = handlers.get(node_type)
@@ -360,6 +362,11 @@ class ExecutionEngine:
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
     ) -> OutputData:
+        # Support conditional skip via 'when' key
+        when = node.get("when")
+        if when is not None and not when(data):
+            return data  # Skip task, pass data through
+
         task = node["task"]
         return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter)
 
@@ -471,3 +478,35 @@ class ExecutionEngine:
             )
 
         return current_data
+
+    @staticmethod
+    async def _execute_map(
+        node: Dict[str, Any],
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
+        hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
+    ) -> OutputData:
+        """
+        Execute a task once per item in a list field, in parallel.
+
+        The node must have 'task' and 'over' keys. 'over' is the key in
+        the input data containing the list to iterate over.
+        """
+        task = node["task"]
+        over_key = node["over"]
+
+        items = data.get(over_key, [])
+        if not isinstance(items, list):
+            raise ValueError(f"Map 'over' key '{over_key}' must reference a list, got {type(items).__name__}")
+
+        async def execute_for_item(item):
+            item_data = {**data, over_key: item}
+            return await ExecutionEngine._execute_task(
+                task, item_data, context, storage, node_index, hooks, event_emitter
+            )
+
+        results = await asyncio.gather(*[execute_for_item(item) for item in items])
+        return {"results": list(results)}

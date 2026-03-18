@@ -556,3 +556,187 @@ class Flow:
         if not self.storage:
             raise RuntimeError("Storage backend required")
         return await self.storage.get_task_runs(execution_id)
+
+    async def dry_run(self, input_data: InputData) -> Dict[str, Any]:
+        """
+        Validate flow structure and data shape without executing tasks.
+
+        Walks through the execution graph, validates input data against each
+        task's input_schema using Pydantic, and returns a detailed report.
+
+        Args:
+            input_data: Input data dictionary to validate
+
+        Returns:
+            A report dict with flow_id, valid flag, per-node info, and errors.
+
+        Raises:
+            RuntimeError: If flow is not registered
+        """
+        if not self._registered:
+            raise RuntimeError("Flow must be registered before running")
+
+        nodes_report: List[Dict[str, Any]] = []
+        top_errors: List[str] = []
+        all_valid = True
+
+        for idx, node in enumerate(self._tasks):
+            node_type = NodeType(node["type"])
+            node_info: Dict[str, Any] = {"index": idx, "type": node_type.value}
+
+            if node_type == NodeType.SEQUENTIAL:
+                task = node["task"]
+                node_info["task_id"] = task.id
+                valid, errors = self._validate_input_schema(task, input_data)
+                node_info["input_valid"] = valid
+                node_info["errors"] = errors
+                if not valid:
+                    all_valid = False
+                # Report whether 'when' condition would fire
+                when = node.get("when")
+                if when is not None:
+                    try:
+                        node_info["condition_matches"] = bool(when(input_data))
+                    except Exception as e:
+                        node_info["condition_matches"] = None
+                        node_info["errors"].append(f"Condition evaluation error: {e}")
+                        all_valid = False
+
+            elif node_type == NodeType.PARALLEL:
+                tasks = node["tasks"]
+                task_ids = [t.id for t in tasks]
+                node_info["task_ids"] = task_ids
+                node_errors: List[str] = []
+                node_valid = True
+                for t in tasks:
+                    valid, errors = self._validate_input_schema(t, input_data)
+                    if not valid:
+                        node_valid = False
+                        node_errors.extend(errors)
+                node_info["input_valid"] = node_valid
+                node_info["errors"] = node_errors
+                if not node_valid:
+                    all_valid = False
+
+            elif node_type == NodeType.BRANCH:
+                branches = node["branches"]
+                branch_reports = []
+                node_errors = []
+                node_valid = True
+                for b_idx, branch in enumerate(branches):
+                    task = branch["task"]
+                    condition = branch["condition"]
+                    try:
+                        matches = bool(condition(input_data))
+                    except Exception as e:
+                        matches = None
+                        node_errors.append(f"Branch {b_idx} condition error: {e}")
+                        all_valid = False
+                        node_valid = False
+                    valid, errors = self._validate_input_schema(task, input_data)
+                    if not valid:
+                        node_valid = False
+                        node_errors.extend(errors)
+                    branch_reports.append({
+                        "task_id": task.id,
+                        "condition_matches": matches,
+                    })
+                node_info["branches"] = branch_reports
+                node_info["input_valid"] = node_valid
+                node_info["errors"] = node_errors
+                if not node_valid:
+                    all_valid = False
+
+            elif node_type == NodeType.LOOP:
+                task = node["task"]
+                node_info["task_id"] = task.id
+                valid, errors = self._validate_input_schema(task, input_data)
+                node_info["input_valid"] = valid
+                node_info["errors"] = errors
+                if not valid:
+                    all_valid = False
+
+            elif node_type == NodeType.MAP:
+                task = node["task"]
+                node_info["task_id"] = task.id
+                node_info["over"] = node["over"]
+                valid, errors = self._validate_input_schema(task, input_data)
+                node_info["input_valid"] = valid
+                node_info["errors"] = errors
+                if not valid:
+                    all_valid = False
+
+            elif node_type == NodeType.DAG:
+                tasks = node["tasks"]
+                task_ids = [t.id for t in tasks]
+                dependencies = node.get("dependencies", {})
+                node_info["task_ids"] = task_ids
+                node_errors = []
+                node_valid = True
+
+                # Validate input schemas
+                for t in tasks:
+                    valid, errors = self._validate_input_schema(t, input_data)
+                    if not valid:
+                        node_valid = False
+                        node_errors.extend(errors)
+
+                # Validate dependency graph: unknown deps
+                all_task_ids = set(task_ids)
+                for task_id, deps in dependencies.items():
+                    if task_id not in all_task_ids:
+                        node_errors.append(f"Dependency references unknown task: {task_id}")
+                        node_valid = False
+                    for dep in deps:
+                        if dep not in all_task_ids:
+                            node_errors.append(f"Task '{task_id}' depends on unknown task: {dep}")
+                            node_valid = False
+
+                # Detect cycles via topological sort
+                in_degree = {tid: 0 for tid in all_task_ids}
+                for task_id, deps in dependencies.items():
+                    if task_id in in_degree:
+                        in_degree[task_id] = len(deps)
+                ready = [tid for tid, deg in in_degree.items() if deg == 0]
+                visited = 0
+                queue = list(ready)
+                dependents: Dict[str, List[str]] = {tid: [] for tid in all_task_ids}
+                for task_id, deps in dependencies.items():
+                    for dep in deps:
+                        if dep in dependents:
+                            dependents[dep].append(task_id)
+                while queue:
+                    current = queue.pop(0)
+                    visited += 1
+                    for dep_id in dependents.get(current, []):
+                        in_degree[dep_id] -= 1
+                        if in_degree[dep_id] == 0:
+                            queue.append(dep_id)
+                if visited < len(all_task_ids):
+                    node_errors.append("DAG has circular dependencies")
+                    node_valid = False
+
+                node_info["input_valid"] = node_valid
+                node_info["errors"] = node_errors
+                if not node_valid:
+                    all_valid = False
+
+            nodes_report.append(node_info)
+
+        return {
+            "flow_id": self.id,
+            "valid": all_valid,
+            "nodes": nodes_report,
+            "errors": top_errors,
+        }
+
+    @staticmethod
+    def _validate_input_schema(task: Any, data: InputData) -> Tuple[bool, List[str]]:
+        """Validate input_data against a task's input_schema using Pydantic."""
+        if not hasattr(task, "input_schema") or task.input_schema is None:
+            return True, []
+        try:
+            task.input_schema(**data)
+            return True, []
+        except Exception as e:
+            return False, [f"Task '{task.id}' input validation failed: {e}"]

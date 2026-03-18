@@ -16,6 +16,7 @@ from .rate_limiter import RateLimiter, get_rate_limiter
 from .human_task import create_human_task, HumanInputManager, HumanInputRequired
 from .telemetry import TelemetryManager, is_otel_available
 from .cache import TaskCache, InMemoryCache
+from .circuit_breaker import CircuitBreaker, CircuitBreakerOpen
 
 __all__ = [
     "Flow",
@@ -43,4 +44,6 @@ __all__ = [
     "is_otel_available",
     "TaskCache",
     "InMemoryCache",
+    "CircuitBreaker",
+    "CircuitBreakerOpen",
 ]

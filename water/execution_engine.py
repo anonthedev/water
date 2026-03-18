@@ -245,6 +245,15 @@ class ExecutionEngine:
                 context.add_task_output(task.id, cached)
                 return cached
 
+        # --- Circuit breaker check (after cache, before execution) ---
+        cb = getattr(task, "circuit_breaker", None)
+        if cb is not None:
+            if not cb.can_execute():
+                from water.circuit_breaker import CircuitBreakerOpen
+                raise CircuitBreakerOpen(
+                    f"Circuit breaker is open for task '{task.id}'"
+                )
+
         # Update context with current task info
         context.task_id = task.id
         context.step_start_time = datetime.utcnow()
@@ -368,6 +377,10 @@ class ExecutionEngine:
                         data={"output": result},
                     ))
 
+                # Record circuit breaker success
+                if cb is not None:
+                    cb.record_success()
+
                 if telemetry and _telem_span is not None:
                     telemetry.set_success(_telem_span)
                     _telem_span_ctx.__exit__(None, None, None)
@@ -391,6 +404,9 @@ class ExecutionEngine:
                         f"after error: {e}"
                     )
                 else:
+                    # Record circuit breaker failure
+                    if cb is not None:
+                        cb.record_failure()
                     # Emit task error hook and event
                     if hooks:
                         await hooks.emit(

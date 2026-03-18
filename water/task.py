@@ -32,6 +32,7 @@ class Task:
         validate_schema: bool = False,
         rate_limit: Optional[float] = None,
         cache: Optional[Any] = None,
+        circuit_breaker: Optional[Any] = None,
     ) -> None:
         """
         Initialize a new Task.
@@ -49,6 +50,7 @@ class Task:
             validate_schema: If True, validate input/output against schemas at runtime
             rate_limit: Optional max executions per second (e.g., 5.0 for 5 calls/sec)
             cache: Optional TaskCache instance for memoizing task results
+            circuit_breaker: Optional CircuitBreaker instance for protecting external calls
 
         Raises:
             WaterError: If schemas are not Pydantic BaseModel classes or execute is not callable
@@ -74,6 +76,7 @@ class Task:
         self.validate_schema = validate_schema
         self.rate_limit = rate_limit
         self.cache = cache
+        self.circuit_breaker = circuit_breaker
 
 
 def create_task(
@@ -89,6 +92,7 @@ def create_task(
     validate_schema: bool = False,
     rate_limit: Optional[float] = None,
     cache: Optional[Any] = None,
+    circuit_breaker: Optional[Any] = None,
 ) -> Task:
     """
     Factory function to create a Task instance.
@@ -106,4 +110,5 @@ def create_task(
         validate_schema=validate_schema,
         rate_limit=rate_limit,
         cache=cache,
+        circuit_breaker=circuit_breaker,
     )

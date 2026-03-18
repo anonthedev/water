@@ -90,7 +90,7 @@ class Flow:
         self.metadata[key] = value
         return self
 
-    def then(self, task: Any, when: Optional[ConditionFunction] = None) -> 'Flow':
+    def then(self, task: Any, when: Optional[ConditionFunction] = None, fallback: Any = None) -> 'Flow':
         """
         Add a task to execute sequentially.
 
@@ -98,6 +98,8 @@ class Flow:
             task: The task to execute
             when: Optional condition function. If provided and returns False,
                   the task is skipped and data passes through unchanged.
+            fallback: Optional fallback task. If the primary task raises an
+                      exception, the fallback task runs instead.
 
         Returns:
             Self for method chaining
@@ -112,9 +114,15 @@ class Flow:
         if when is not None:
             self._validate_condition(when)
 
+        if fallback is not None:
+            fallback = self._coerce_task(fallback)
+            self._validate_task(fallback)
+
         node: ExecutionNode = {"type": NodeType.SEQUENTIAL.value, "task": task}
         if when is not None:
             node["when"] = when
+        if fallback is not None:
+            node["fallback"] = fallback
         self._tasks.append(node)
         return self
 

@@ -1,4 +1,4 @@
-from typing import Type, Callable, Optional, Dict
+from typing import Any, Type, Callable, Optional, Dict
 from pydantic import BaseModel
 from water.exceptions import WaterError
 import uuid
@@ -31,6 +31,7 @@ class Task:
         timeout: Optional[float] = None,
         validate_schema: bool = False,
         rate_limit: Optional[float] = None,
+        cache: Optional[Any] = None,
     ) -> None:
         """
         Initialize a new Task.
@@ -47,6 +48,7 @@ class Task:
             timeout: Optional timeout in seconds for task execution
             validate_schema: If True, validate input/output against schemas at runtime
             rate_limit: Optional max executions per second (e.g., 5.0 for 5 calls/sec)
+            cache: Optional TaskCache instance for memoizing task results
 
         Raises:
             WaterError: If schemas are not Pydantic BaseModel classes or execute is not callable
@@ -71,6 +73,7 @@ class Task:
         self.timeout = timeout
         self.validate_schema = validate_schema
         self.rate_limit = rate_limit
+        self.cache = cache
 
 
 def create_task(
@@ -85,6 +88,7 @@ def create_task(
     timeout: Optional[float] = None,
     validate_schema: bool = False,
     rate_limit: Optional[float] = None,
+    cache: Optional[Any] = None,
 ) -> Task:
     """
     Factory function to create a Task instance.
@@ -101,4 +105,5 @@ def create_task(
         timeout=timeout,
         validate_schema=validate_schema,
         rate_limit=rate_limit,
+        cache=cache,
     )

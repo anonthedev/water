@@ -15,6 +15,7 @@ from .events import EventEmitter, FlowEvent, EventSubscription
 from .rate_limiter import RateLimiter, get_rate_limiter
 from .human_task import create_human_task, HumanInputManager, HumanInputRequired
 from .telemetry import TelemetryManager, is_otel_available
+from .cache import TaskCache, InMemoryCache
 
 __all__ = [
     "Flow",
@@ -40,4 +41,6 @@ __all__ = [
     "HumanInputRequired",
     "TelemetryManager",
     "is_otel_available",
+    "TaskCache",
+    "InMemoryCache",
 ]

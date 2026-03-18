@@ -230,8 +230,20 @@ class ExecutionEngine:
         Supports retry with backoff, per-task timeouts, hooks, events, storage recording, and telemetry.
         """
         from water.storage import TaskRun
+        from water.cache import cache_key as _cache_key
 
         params: Dict[str, InputData] = {"input_data": data}
+
+        # --- Cache lookup (before any execution work) ---
+        task_cache = getattr(task, "cache", None)
+        if task_cache is not None:
+            ck = _cache_key(task.id, data)
+            cached = task_cache.get(ck)
+            if cached is not None:
+                context.task_id = task.id
+                context.step_number += 1
+                context.add_task_output(task.id, cached)
+                return cached
 
         # Update context with current task info
         context.task_id = task.id
@@ -325,6 +337,10 @@ class ExecutionEngine:
                             f"Task '{task.id}' output validation failed: {ve}"
                         ) from ve
 
+                # Store result in cache if enabled
+                if task_cache is not None:
+                    task_cache.set(ck, result)
+
                 # Store the task result in context for future tasks to access
                 context.add_task_output(task.id, result)
 
@@ -413,7 +429,17 @@ class ExecutionEngine:
             return data  # Skip task, pass data through
 
         task = node["task"]
-        return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
+        fallback = node.get("fallback")
+
+        try:
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
+        except Exception:
+            if fallback is not None:
+                logger.info(
+                    f"Primary task '{task.id}' failed, running fallback task '{fallback.id}'"
+                )
+                return await ExecutionEngine._execute_task(fallback, data, context, storage, node_index, hooks, event_emitter, telemetry)
+            raise
 
     @staticmethod
     async def _execute_parallel(

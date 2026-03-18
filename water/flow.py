@@ -47,6 +47,7 @@ class Flow:
         self.storage = storage
         self.hooks = HookManager()
         self.events: Optional[Any] = None
+        self.telemetry: Optional[Any] = None
 
     def _validate_registration_state(self) -> None:
         """Ensure flow is not registered when adding tasks."""
@@ -382,6 +383,7 @@ class Flow:
                 storage=self.storage,
                 hooks=self.hooks,
                 event_emitter=self.events,
+                telemetry=self.telemetry,
             )
             await self.hooks.emit("on_flow_complete", flow_id=self.id, output_data=result)
             if self.events:

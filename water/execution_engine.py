@@ -58,6 +58,7 @@ class ExecutionEngine:
         resume_from: Optional[Dict[str, Any]] = None,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a complete flow execution graph.
@@ -153,7 +154,7 @@ class ExecutionEngine:
 
                 node = execution_graph[node_index]
                 data = await ExecutionEngine._execute_node(
-                    node, data, context, storage, node_index, hooks, event_emitter
+                    node, data, context, storage, node_index, hooks, event_emitter, telemetry
                 )
 
             # Mark as completed
@@ -188,6 +189,7 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         """
         Route execution to the appropriate node type handler.
@@ -210,7 +212,7 @@ class ExecutionEngine:
         if not handler:
             raise ValueError(f"Unhandled node type: {node_type}")
 
-        return await handler(node, data, context, storage, node_index, hooks, event_emitter)
+        return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry)
 
     @staticmethod
     async def _execute_task(
@@ -221,10 +223,11 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a single task, handling both sync and async functions.
-        Supports retry with backoff, per-task timeouts, hooks, events, and storage recording.
+        Supports retry with backoff, per-task timeouts, hooks, events, storage recording, and telemetry.
         """
         from water.storage import TaskRun
 
@@ -257,6 +260,12 @@ class ExecutionEngine:
                 task_id=task.id, execution_id=context.execution_id,
                 data={"input": data},
             ))
+
+        # Telemetry span tracking
+        _telem_span = None
+        if telemetry and telemetry.is_active:
+            _telem_span_ctx = telemetry.task_span(task.id, context.flow_id)
+            _telem_span = _telem_span_ctx.__enter__()
 
         for attempt in range(1, max_attempts + 1):
             context.attempt_number = attempt
@@ -343,6 +352,10 @@ class ExecutionEngine:
                         data={"output": result},
                     ))
 
+                if telemetry and _telem_span is not None:
+                    telemetry.set_success(_telem_span)
+                    _telem_span_ctx.__exit__(None, None, None)
+
                 return result
 
             except Exception as e:
@@ -378,6 +391,9 @@ class ExecutionEngine:
                             task_id=task.id, execution_id=context.execution_id,
                             data={"error": str(last_error)},
                         ))
+                    if telemetry and _telem_span is not None:
+                        telemetry.record_error(_telem_span, last_error)
+                        _telem_span_ctx.__exit__(type(last_error), last_error, last_error.__traceback__)
                     raise last_error
 
     @staticmethod
@@ -389,6 +405,7 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         # Support conditional skip via 'when' key
         when = node.get("when")
@@ -396,7 +413,7 @@ class ExecutionEngine:
             return data  # Skip task, pass data through
 
         task = node["task"]
-        return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter)
+        return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
 
     @staticmethod
     async def _execute_parallel(
@@ -407,11 +424,12 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         tasks = node["tasks"]
 
         async def execute_single_task(task):
-            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter)
+            return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
 
         coroutines = [execute_single_task(task) for task in tasks]
         results: List[OutputData] = await asyncio.gather(*coroutines)
@@ -430,6 +448,7 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         branches = node["branches"]
 
@@ -438,7 +457,7 @@ class ExecutionEngine:
 
             if condition(data):
                 task = branch["task"]
-                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter)
+                return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry)
 
         return data
 
@@ -451,6 +470,7 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         condition = node["condition"]
         task = node["task"]
@@ -495,7 +515,7 @@ class ExecutionEngine:
                     )
 
             current_data = await ExecutionEngine._execute_task(
-                task, current_data, context, storage, node_index, hooks, event_emitter
+                task, current_data, context, storage, node_index, hooks, event_emitter, telemetry
             )
             iteration_count += 1
 
@@ -516,6 +536,7 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute a task once per item in a list field, in parallel.
@@ -533,7 +554,7 @@ class ExecutionEngine:
         async def execute_for_item(item):
             item_data = {**data, over_key: item}
             return await ExecutionEngine._execute_task(
-                task, item_data, context, storage, node_index, hooks, event_emitter
+                task, item_data, context, storage, node_index, hooks, event_emitter, telemetry
             )
 
         results = await asyncio.gather(*[execute_for_item(item) for item in items])
@@ -548,6 +569,7 @@ class ExecutionEngine:
         node_index: int = 0,
         hooks: Optional[Any] = None,
         event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
     ) -> OutputData:
         """
         Execute tasks as a DAG with automatic parallelization.
@@ -599,7 +621,7 @@ class ExecutionEngine:
                 if dep_id in results:
                     task_data[f"_{dep_id}_output"] = results[dep_id]
             return await ExecutionEngine._execute_task(
-                task, task_data, context, storage, node_index, hooks, event_emitter
+                task, task_data, context, storage, node_index, hooks, event_emitter, telemetry
             )
 
         # Process DAG level by level

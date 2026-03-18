@@ -19,6 +19,7 @@ from .cache import TaskCache, InMemoryCache
 from .circuit_breaker import CircuitBreaker, CircuitBreakerOpen
 from .checkpoint import CheckpointBackend, InMemoryCheckpoint
 from .middleware import Middleware, LoggingMiddleware, TransformMiddleware
+from .dlq import DeadLetter, DeadLetterQueue, InMemoryDLQ
 
 __all__ = [
     "Flow",
@@ -53,4 +54,7 @@ __all__ = [
     "Middleware",
     "LoggingMiddleware",
     "TransformMiddleware",
+    "DeadLetter",
+    "DeadLetterQueue",
+    "InMemoryDLQ",
 ]

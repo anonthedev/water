@@ -1,43 +1,62 @@
-from .flow import Flow
-from .task import create_task, Task
-from .server import FlowServer
-from .storage import (
+# ---------------------------------------------------------------------------
+# water — Python agent harness & workflow orchestration framework
+# ---------------------------------------------------------------------------
+# Subpackage layout:
+#   water.core          – Flow, Task, ExecutionEngine, Context
+#   water.storage       – StorageBackend, InMemory, SQLite, Redis, Postgres
+#   water.resilience    – CircuitBreaker, RateLimiter, Cache, Checkpoint, DLQ
+#   water.middleware     – Middleware, Hooks, Events
+#   water.agents        – LLM tasks, Multi-agent, Approval, Human, Sandbox
+#   water.integrations  – MCP, Chat, Streaming
+#   water.observability – Telemetry, Dashboard
+#   water.server        – FlowServer (FastAPI)
+#   water.utils         – Testing, Scheduler, Declarative, Secrets, CLI
+# ---------------------------------------------------------------------------
+
+# --- Core ---
+from water.core import Flow, Task, create_task, ExecutionContext
+from water.core.engine import FlowPausedError, FlowStoppedError
+
+# --- Storage ---
+from water.storage import (
     StorageBackend,
     InMemoryStorage,
     SQLiteStorage,
     FlowSession,
     FlowStatus,
     TaskRun,
+    RedisStorage,
+    PostgresStorage,
 )
-from .execution_engine import FlowPausedError, FlowStoppedError
-from .hooks import HookManager
-from .events import EventEmitter, FlowEvent, EventSubscription
-from .rate_limiter import RateLimiter, get_rate_limiter
-from .human_task import create_human_task, HumanInputManager, HumanInputRequired
-from .telemetry import TelemetryManager, is_otel_available
-from .cache import TaskCache, InMemoryCache
-from .circuit_breaker import CircuitBreaker, CircuitBreakerOpen
-from .checkpoint import CheckpointBackend, InMemoryCheckpoint
-from .middleware import Middleware, LoggingMiddleware, TransformMiddleware
-from .dlq import DeadLetter, DeadLetterQueue, InMemoryDLQ
-from .declarative import load_flow_from_dict, load_flow_from_yaml, load_flow_from_json
-from .storage_redis import RedisStorage
-from .storage_postgres import PostgresStorage
-from .secrets import SecretValue, SecretsManager, EnvSecretsManager
-from .dashboard import FlowDashboard
-from .testing import MockTask, FlowTestRunner
-from .scheduler import FlowScheduler, ScheduledJob
-from .chat import (
-    ChatAdapter,
-    ChatBot,
-    ChatMessage,
-    FlowNotification,
-    InMemoryAdapter,
-    SlackAdapter,
-    DiscordAdapter,
-    TelegramAdapter,
+
+# --- Resilience ---
+from water.resilience import (
+    CircuitBreaker,
+    CircuitBreakerOpen,
+    RateLimiter,
+    get_rate_limiter,
+    TaskCache,
+    InMemoryCache,
+    CheckpointBackend,
+    InMemoryCheckpoint,
+    DeadLetter,
+    DeadLetterQueue,
+    InMemoryDLQ,
 )
-from .agent_task import (
+
+# --- Middleware & Lifecycle ---
+from water.middleware import (
+    Middleware,
+    LoggingMiddleware,
+    TransformMiddleware,
+    HookManager,
+    EventEmitter,
+    FlowEvent,
+    EventSubscription,
+)
+
+# --- Agents ---
+from water.agents import (
     create_agent_task,
     LLMProvider,
     MockProvider,
@@ -46,8 +65,19 @@ from .agent_task import (
     CustomProvider,
     AgentInput,
     AgentOutput,
-)
-from .sandbox import (
+    AgentRole,
+    SharedContext,
+    AgentOrchestrator,
+    create_agent_team,
+    RiskLevel,
+    ApprovalPolicy,
+    ApprovalRequest,
+    ApprovalGate,
+    ApprovalDenied,
+    create_approval_task,
+    create_human_task,
+    HumanInputManager,
+    HumanInputRequired,
     SandboxConfig,
     SandboxResult,
     SandboxBackend,
@@ -56,67 +86,84 @@ from .sandbox import (
     DockerSandbox,
     create_sandboxed_task,
 )
-from .streaming import StreamEvent, StreamManager, StreamingFlow, add_streaming_routes
-from .mcp import MCPServer, MCPClient, create_mcp_task
-from .approval import (
-    RiskLevel,
-    ApprovalPolicy,
-    ApprovalRequest,
-    ApprovalGate,
-    ApprovalDenied,
-    create_approval_task,
+
+# --- Integrations ---
+from water.integrations import (
+    MCPServer,
+    MCPClient,
+    create_mcp_task,
+    ChatAdapter,
+    ChatBot,
+    ChatMessage,
+    FlowNotification,
+    InMemoryAdapter,
+    SlackAdapter,
+    DiscordAdapter,
+    TelegramAdapter,
+    StreamEvent,
+    StreamManager,
+    StreamingFlow,
+    add_streaming_routes,
 )
-from .multi_agent import AgentRole, SharedContext, AgentOrchestrator, create_agent_team
+
+# --- Observability ---
+from water.observability import FlowDashboard, TelemetryManager, is_otel_available
+
+# --- Server ---
+from water.server import FlowServer
+
+# --- Utils ---
+from water.utils import (
+    MockTask,
+    FlowTestRunner,
+    FlowScheduler,
+    ScheduledJob,
+    load_flow_from_dict,
+    load_flow_from_yaml,
+    load_flow_from_json,
+    SecretValue,
+    SecretsManager,
+    EnvSecretsManager,
+)
 
 __all__ = [
+    # Core
     "Flow",
-    "create_task",
     "Task",
-    "FlowServer",
+    "create_task",
+    "ExecutionContext",
+    "FlowPausedError",
+    "FlowStoppedError",
+    # Storage
     "StorageBackend",
     "InMemoryStorage",
     "SQLiteStorage",
     "FlowSession",
     "FlowStatus",
     "TaskRun",
-    "FlowPausedError",
-    "FlowStoppedError",
+    "RedisStorage",
+    "PostgresStorage",
+    # Resilience
+    "CircuitBreaker",
+    "CircuitBreakerOpen",
+    "RateLimiter",
+    "get_rate_limiter",
+    "TaskCache",
+    "InMemoryCache",
+    "CheckpointBackend",
+    "InMemoryCheckpoint",
+    "DeadLetter",
+    "DeadLetterQueue",
+    "InMemoryDLQ",
+    # Middleware & Lifecycle
+    "Middleware",
+    "LoggingMiddleware",
+    "TransformMiddleware",
     "HookManager",
     "EventEmitter",
     "FlowEvent",
     "EventSubscription",
-    "RateLimiter",
-    "get_rate_limiter",
-    "create_human_task",
-    "HumanInputManager",
-    "HumanInputRequired",
-    "TelemetryManager",
-    "is_otel_available",
-    "TaskCache",
-    "InMemoryCache",
-    "CircuitBreaker",
-    "CircuitBreakerOpen",
-    "CheckpointBackend",
-    "InMemoryCheckpoint",
-    "Middleware",
-    "LoggingMiddleware",
-    "TransformMiddleware",
-    "DeadLetter",
-    "DeadLetterQueue",
-    "InMemoryDLQ",
-    "load_flow_from_dict",
-    "load_flow_from_yaml",
-    "load_flow_from_json",
-    "SecretValue",
-    "SecretsManager",
-    "EnvSecretsManager",
-    "RedisStorage",
-    "PostgresStorage",
-    "FlowDashboard",
-    "MockTask",
-    "FlowTestRunner",
-    "FlowScheduler",
-    "ScheduledJob",
+    # Agents
     "create_agent_task",
     "LLMProvider",
     "MockProvider",
@@ -125,6 +172,30 @@ __all__ = [
     "CustomProvider",
     "AgentInput",
     "AgentOutput",
+    "AgentRole",
+    "SharedContext",
+    "AgentOrchestrator",
+    "create_agent_team",
+    "RiskLevel",
+    "ApprovalPolicy",
+    "ApprovalRequest",
+    "ApprovalGate",
+    "ApprovalDenied",
+    "create_approval_task",
+    "create_human_task",
+    "HumanInputManager",
+    "HumanInputRequired",
+    "SandboxConfig",
+    "SandboxResult",
+    "SandboxBackend",
+    "InMemorySandbox",
+    "SubprocessSandbox",
+    "DockerSandbox",
+    "create_sandboxed_task",
+    # Integrations
+    "MCPServer",
+    "MCPClient",
+    "create_mcp_task",
     "ChatAdapter",
     "ChatBot",
     "ChatMessage",
@@ -133,28 +204,25 @@ __all__ = [
     "SlackAdapter",
     "DiscordAdapter",
     "TelegramAdapter",
-    "SandboxConfig",
-    "SandboxResult",
-    "SandboxBackend",
-    "InMemorySandbox",
-    "SubprocessSandbox",
-    "DockerSandbox",
-    "create_sandboxed_task",
     "StreamEvent",
     "StreamManager",
     "StreamingFlow",
     "add_streaming_routes",
-    "MCPServer",
-    "MCPClient",
-    "create_mcp_task",
-    "RiskLevel",
-    "ApprovalPolicy",
-    "ApprovalRequest",
-    "ApprovalGate",
-    "ApprovalDenied",
-    "create_approval_task",
-    "AgentRole",
-    "SharedContext",
-    "AgentOrchestrator",
-    "create_agent_team",
+    # Observability
+    "FlowDashboard",
+    "TelemetryManager",
+    "is_otel_available",
+    # Server
+    "FlowServer",
+    # Utils
+    "MockTask",
+    "FlowTestRunner",
+    "FlowScheduler",
+    "ScheduledJob",
+    "load_flow_from_dict",
+    "load_flow_from_yaml",
+    "load_flow_from_json",
+    "SecretValue",
+    "SecretsManager",
+    "EnvSecretsManager",
 ]

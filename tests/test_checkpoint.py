@@ -83,7 +83,7 @@ async def test_checkpoint_recovery():
     flow.then(t1).then(t2).then(t3).register()
 
     # Patch ExecutionContext to use a fixed execution_id so it matches the checkpoint
-    with patch("water.execution_engine.ExecutionContext") as MockCtx:
+    with patch("water.core.engine.ExecutionContext") as MockCtx:
         ctx_instance = MockCtx.return_value
         ctx_instance.execution_id = "exec_1"
         ctx_instance.flow_id = "ckpt_recover"

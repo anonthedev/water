@@ -1,4 +1,5 @@
 from typing import Any, List, Optional, Tuple, Dict, Type
+import asyncio
 import inspect
 import uuid
 
@@ -407,6 +408,40 @@ class Flow:
                 await self.events.close()
             raise
 
+    async def run_batch(
+        self,
+        inputs: List[InputData],
+        max_concurrency: int = 10,
+        return_exceptions: bool = False,
+    ) -> List[Any]:
+        """
+        Execute the flow against multiple inputs with concurrency control.
+
+        Args:
+            inputs: List of input data dictionaries to process
+            max_concurrency: Maximum number of concurrent flow executions
+            return_exceptions: If True, exceptions are returned in the results list
+                               instead of being raised
+
+        Returns:
+            List of results in the same order as inputs
+
+        Raises:
+            RuntimeError: If flow is not registered
+            Exception: If return_exceptions is False and any execution fails
+        """
+        if not self._registered:
+            raise RuntimeError("Flow must be registered before running")
+
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def run_one(input_data):
+            async with semaphore:
+                return await self.run(input_data)
+
+        tasks = [run_one(inp) for inp in inputs]
+        return await asyncio.gather(*tasks, return_exceptions=return_exceptions)
+
     async def pause(self, execution_id: str) -> None:
         """
         Request a running flow to pause at the next node boundary.
@@ -729,6 +764,129 @@ class Flow:
             "nodes": nodes_report,
             "errors": top_errors,
         }
+
+    def visualize(self, format: str = "mermaid") -> str:
+        """
+        Generate a visual diagram of this flow's execution graph.
+
+        Args:
+            format: Output format. Currently only "mermaid" is supported.
+
+        Returns:
+            A string containing the diagram in the requested format.
+
+        Raises:
+            RuntimeError: If flow is not registered.
+            ValueError: If an unsupported format is requested.
+        """
+        if not self._registered:
+            raise RuntimeError("Flow must be registered before visualizing")
+
+        if format != "mermaid":
+            raise ValueError(f"Unsupported visualization format: '{format}'. Supported formats: mermaid")
+
+        lines: List[str] = ["graph TD"]
+        node_counter = 0
+
+        def _next_id() -> str:
+            nonlocal node_counter
+            nid = f"N{node_counter}"
+            node_counter += 1
+            return nid
+
+        prev_id: Optional[str] = None
+
+        for node in self._tasks:
+            node_type = NodeType(node["type"])
+
+            if node_type == NodeType.SEQUENTIAL:
+                task = node["task"]
+                nid = _next_id()
+                lines.append(f"    {nid}[{task.id}]")
+                if prev_id is not None:
+                    lines.append(f"    {prev_id} --> {nid}")
+                prev_id = nid
+
+            elif node_type == NodeType.PARALLEL:
+                tasks = node["tasks"]
+                fork_id = _next_id()
+                lines.append(f"    {fork_id}{{{{fork}}}}")
+                if prev_id is not None:
+                    lines.append(f"    {prev_id} --> {fork_id}")
+                join_id = _next_id()
+                lines.append(f"    {join_id}{{{{join}}}}")
+                for t in tasks:
+                    tid = _next_id()
+                    lines.append(f"    {tid}[{t.id}]")
+                    lines.append(f"    {fork_id} --> {tid}")
+                    lines.append(f"    {tid} --> {join_id}")
+                prev_id = join_id
+
+            elif node_type == NodeType.BRANCH:
+                branches = node["branches"]
+                decision_id = _next_id()
+                lines.append(f"    {decision_id}{{{decision_id}}}")
+                if prev_id is not None:
+                    lines.append(f"    {prev_id} --> {decision_id}")
+                end_id = _next_id()
+                lines.append(f"    {end_id}[end_branch]")
+                for b_idx, branch in enumerate(branches):
+                    task = branch["task"]
+                    cond = branch["condition"]
+                    label = getattr(cond, "__name__", f"condition_{b_idx}")
+                    tid = _next_id()
+                    lines.append(f"    {tid}[{task.id}]")
+                    lines.append(f"    {decision_id} -->|{label}| {tid}")
+                    lines.append(f"    {tid} --> {end_id}")
+                prev_id = end_id
+
+            elif node_type == NodeType.LOOP:
+                task = node["task"]
+                condition = node["condition"]
+                label = getattr(condition, "__name__", "condition")
+                nid = _next_id()
+                lines.append(f"    {nid}[{task.id}]")
+                if prev_id is not None:
+                    lines.append(f"    {prev_id} --> {nid}")
+                lines.append(f"    {nid} -->|{label}| {nid}")
+                prev_id = nid
+
+            elif node_type == NodeType.MAP:
+                task = node["task"]
+                over = node["over"]
+                nid = _next_id()
+                lines.append(f"    {nid}[\"{task.id} (map over {over})\"]")
+                if prev_id is not None:
+                    lines.append(f"    {prev_id} --> {nid}")
+                prev_id = nid
+
+            elif node_type == NodeType.DAG:
+                tasks = node["tasks"]
+                dependencies = node.get("dependencies", {})
+                task_id_to_nid: Dict[str, str] = {}
+                for t in tasks:
+                    nid = _next_id()
+                    task_id_to_nid[t.id] = nid
+                    lines.append(f"    {nid}[{t.id}]")
+                if prev_id is not None:
+                    for t in tasks:
+                        if t.id not in dependencies or not dependencies[t.id]:
+                            lines.append(f"    {prev_id} --> {task_id_to_nid[t.id]}")
+                for task_id, deps in dependencies.items():
+                    for dep in deps:
+                        if dep in task_id_to_nid and task_id in task_id_to_nid:
+                            lines.append(f"    {task_id_to_nid[dep]} --> {task_id_to_nid[task_id]}")
+                if tasks:
+                    all_deps_of_others: set = set()
+                    for deps in dependencies.values():
+                        all_deps_of_others.update(deps)
+                    leaves = [t for t in tasks if t.id not in all_deps_of_others]
+                    if len(leaves) == 1:
+                        prev_id = task_id_to_nid[leaves[0].id]
+                    else:
+                        prev_id = task_id_to_nid[tasks[-1].id]
+
+        return "\n".join(lines)
 
     @staticmethod
     def _validate_input_schema(task: Any, data: InputData) -> Tuple[bool, List[str]]:

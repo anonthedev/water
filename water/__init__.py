@@ -20,6 +20,8 @@ from .circuit_breaker import CircuitBreaker, CircuitBreakerOpen
 from .checkpoint import CheckpointBackend, InMemoryCheckpoint
 from .middleware import Middleware, LoggingMiddleware, TransformMiddleware
 from .dlq import DeadLetter, DeadLetterQueue, InMemoryDLQ
+from .declarative import load_flow_from_dict, load_flow_from_yaml, load_flow_from_json
+from .secrets import SecretValue, SecretsManager, EnvSecretsManager
 
 __all__ = [
     "Flow",
@@ -57,4 +59,10 @@ __all__ = [
     "DeadLetter",
     "DeadLetterQueue",
     "InMemoryDLQ",
+    "load_flow_from_dict",
+    "load_flow_from_yaml",
+    "load_flow_from_json",
+    "SecretValue",
+    "SecretsManager",
+    "EnvSecretsManager",
 ]

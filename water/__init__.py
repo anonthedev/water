@@ -27,6 +27,46 @@ from .secrets import SecretValue, SecretsManager, EnvSecretsManager
 from .dashboard import FlowDashboard
 from .testing import MockTask, FlowTestRunner
 from .scheduler import FlowScheduler, ScheduledJob
+from .chat import (
+    ChatAdapter,
+    ChatBot,
+    ChatMessage,
+    FlowNotification,
+    InMemoryAdapter,
+    SlackAdapter,
+    DiscordAdapter,
+    TelegramAdapter,
+)
+from .agent_task import (
+    create_agent_task,
+    LLMProvider,
+    MockProvider,
+    OpenAIProvider,
+    AnthropicProvider,
+    CustomProvider,
+    AgentInput,
+    AgentOutput,
+)
+from .sandbox import (
+    SandboxConfig,
+    SandboxResult,
+    SandboxBackend,
+    InMemorySandbox,
+    SubprocessSandbox,
+    DockerSandbox,
+    create_sandboxed_task,
+)
+from .streaming import StreamEvent, StreamManager, StreamingFlow, add_streaming_routes
+from .mcp import MCPServer, MCPClient, create_mcp_task
+from .approval import (
+    RiskLevel,
+    ApprovalPolicy,
+    ApprovalRequest,
+    ApprovalGate,
+    ApprovalDenied,
+    create_approval_task,
+)
+from .multi_agent import AgentRole, SharedContext, AgentOrchestrator, create_agent_team
 
 __all__ = [
     "Flow",
@@ -77,4 +117,44 @@ __all__ = [
     "FlowTestRunner",
     "FlowScheduler",
     "ScheduledJob",
+    "create_agent_task",
+    "LLMProvider",
+    "MockProvider",
+    "OpenAIProvider",
+    "AnthropicProvider",
+    "CustomProvider",
+    "AgentInput",
+    "AgentOutput",
+    "ChatAdapter",
+    "ChatBot",
+    "ChatMessage",
+    "FlowNotification",
+    "InMemoryAdapter",
+    "SlackAdapter",
+    "DiscordAdapter",
+    "TelegramAdapter",
+    "SandboxConfig",
+    "SandboxResult",
+    "SandboxBackend",
+    "InMemorySandbox",
+    "SubprocessSandbox",
+    "DockerSandbox",
+    "create_sandboxed_task",
+    "StreamEvent",
+    "StreamManager",
+    "StreamingFlow",
+    "add_streaming_routes",
+    "MCPServer",
+    "MCPClient",
+    "create_mcp_task",
+    "RiskLevel",
+    "ApprovalPolicy",
+    "ApprovalRequest",
+    "ApprovalGate",
+    "ApprovalDenied",
+    "create_approval_task",
+    "AgentRole",
+    "SharedContext",
+    "AgentOrchestrator",
+    "create_agent_team",
 ]

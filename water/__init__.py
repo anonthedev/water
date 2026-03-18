@@ -25,6 +25,8 @@ from .storage_redis import RedisStorage
 from .storage_postgres import PostgresStorage
 from .secrets import SecretValue, SecretsManager, EnvSecretsManager
 from .dashboard import FlowDashboard
+from .testing import MockTask, FlowTestRunner
+from .scheduler import FlowScheduler, ScheduledJob
 
 __all__ = [
     "Flow",
@@ -71,4 +73,8 @@ __all__ = [
     "RedisStorage",
     "PostgresStorage",
     "FlowDashboard",
+    "MockTask",
+    "FlowTestRunner",
+    "FlowScheduler",
+    "ScheduledJob",
 ]

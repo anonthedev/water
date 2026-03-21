@@ -240,6 +240,30 @@ class CustomProvider(LLMProvider):
 
 
 # ---------------------------------------------------------------------------
+# Usage normalisation
+# ---------------------------------------------------------------------------
+
+def _normalize_usage(raw_usage: Any) -> Optional[Dict[str, int]]:
+    """Normalise provider-specific token usage into ``{input_tokens, output_tokens}``.
+
+    Handles OpenAI (``prompt_tokens``/``completion_tokens``), Anthropic
+    (``input_tokens``/``output_tokens``), plain dicts, and SDK model objects.
+    Returns ``None`` when *raw_usage* is ``None`` or empty.
+    """
+    if raw_usage is None:
+        return None
+    if isinstance(raw_usage, dict):
+        return {
+            "input_tokens": raw_usage.get("input_tokens") or raw_usage.get("prompt_tokens", 0),
+            "output_tokens": raw_usage.get("output_tokens") or raw_usage.get("completion_tokens", 0),
+        }
+    # SDK objects (e.g. openai.types.CompletionUsage, anthropic.types.Usage)
+    input_t = getattr(raw_usage, "input_tokens", None) or getattr(raw_usage, "prompt_tokens", 0)
+    output_t = getattr(raw_usage, "output_tokens", None) or getattr(raw_usage, "completion_tokens", 0)
+    return {"input_tokens": input_t, "output_tokens": output_t}
+
+
+# ---------------------------------------------------------------------------
 # Provider factory helper
 # ---------------------------------------------------------------------------
 
@@ -398,15 +422,22 @@ def create_agent_task(
         response = await llm_provider.complete(messages, **extra_kwargs)
         response_text = response.get("text", "")
 
+        # Build cost-tracking metadata so CostTracker middleware can record usage
+        cost_meta: Dict[str, Any] = {}
+        usage = _normalize_usage(response.get("usage"))
+        if usage:
+            cost_meta["usage"] = usage
+            cost_meta["model"] = getattr(llm_provider, "model", "unknown")
+
         # 5. Parse response
         if output_parser:
             parsed = output_parser(response_text)
             if isinstance(parsed, dict):
-                return parsed
-            return {"response": parsed}
+                return {**parsed, **cost_meta}
+            return {"response": parsed, **cost_meta}
 
         # 6. Default: merge response with input data
-        return {"response": response_text, **input_data}
+        return {"response": response_text, **input_data, **cost_meta}
 
     return Task(
         id=task_id,

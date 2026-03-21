@@ -165,6 +165,9 @@ from water.observability import (
     TraceStore,
     Trace,
     TraceSpan,
+    StructuredLogger,
+    LogContext,
+    LogExporter,
 )
 
 # --- Server ---
@@ -318,6 +321,9 @@ __all__ = [
     "TraceStore",
     "Trace",
     "TraceSpan",
+    "StructuredLogger",
+    "LogContext",
+    "LogExporter",
     # Server
     "FlowServer",
     # Utils

@@ -27,6 +27,12 @@ from water.agents.human import (
     HumanInputManager,
     HumanInputRequired,
 )
+from water.agents.tools import (
+    Tool,
+    Toolkit,
+    ToolResult,
+    ToolExecutor,
+)
 from water.agents.sandbox import (
     SandboxConfig,
     SandboxResult,

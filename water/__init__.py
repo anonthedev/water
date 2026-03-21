@@ -85,6 +85,10 @@ from water.agents import (
     SubprocessSandbox,
     DockerSandbox,
     create_sandboxed_task,
+    Tool,
+    Toolkit,
+    ToolResult,
+    ToolExecutor,
 )
 
 # --- Integrations ---
@@ -225,6 +229,10 @@ __all__ = [
     "SubprocessSandbox",
     "DockerSandbox",
     "create_sandboxed_task",
+    "Tool",
+    "Toolkit",
+    "ToolResult",
+    "ToolExecutor",
     # Integrations
     "MCPServer",
     "MCPClient",

@@ -30,7 +30,7 @@ class ToolResult:
     error: Optional[str] = None
     success: bool = True
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         d = {"tool_name": self.tool_name, "output": self.output, "success": self.success}
         if self.error:
             d["error"] = self.error
@@ -55,18 +55,18 @@ class Tool:
         self,
         name: str,
         description: str,
-        input_schema: Any = None,
-        execute: Optional[Callable] = None,
-    ):
-        self.name = name
-        self.description = description
-        self.input_schema = input_schema
-        self.execute_fn = execute
+        input_schema: Optional[Type[BaseModel]] = None,
+        execute: Optional[Callable[..., Any]] = None,
+    ) -> None:
+        self.name: str = name
+        self.description: str = description
+        self.input_schema: Optional[Type[BaseModel]] = input_schema
+        self.execute_fn: Optional[Callable[..., Any]] = execute
 
     async def run(self, arguments: Dict[str, Any]) -> ToolResult:
         """Execute this tool with the given arguments."""
         if self.execute_fn is None:
-            return ToolResult(tool_name=self.name, output=None, error=f"Tool: {self.name} has no execute function", success=False)
+            return ToolResult(tool_name=self.name, output=None, error=f"Tool: no execute function defined for '{self.name}'", success=False)
         try:
             if inspect.iscoroutinefunction(self.execute_fn):
                 result = await self.execute_fn(**arguments)
@@ -76,7 +76,7 @@ class Tool:
         except Exception as e:
             return ToolResult(tool_name=self.name, output=None, error=str(e), success=False)
 
-    def to_openai_schema(self) -> dict:
+    def to_openai_schema(self) -> Dict[str, Any]:
         """Convert to OpenAI function calling format."""
         parameters = self._schema_to_json_schema()
         return {
@@ -88,7 +88,7 @@ class Tool:
             },
         }
 
-    def to_anthropic_schema(self) -> dict:
+    def to_anthropic_schema(self) -> Dict[str, Any]:
         """Convert to Anthropic tool use format."""
         return {
             "name": self.name,
@@ -96,7 +96,7 @@ class Tool:
             "input_schema": self._schema_to_json_schema(),
         }
 
-    def _schema_to_json_schema(self) -> dict:
+    def _schema_to_json_schema(self) -> Dict[str, Any]:
         """Convert input_schema to JSON Schema."""
         if self.input_schema is None:
             return {"type": "object", "properties": {}}
@@ -122,8 +122,8 @@ class Toolkit:
         tools: List of Tool instances.
     """
 
-    def __init__(self, name: str, tools: Optional[List[Tool]] = None):
-        self.name = name
+    def __init__(self, name: str, tools: Optional[List[Tool]] = None) -> None:
+        self.name: str = name
         self.tools: List[Tool] = tools or []
         self._tool_map: Dict[str, Tool] = {t.name: t for t in self.tools}
 
@@ -137,18 +137,18 @@ class Toolkit:
         """Get a tool by name."""
         return self._tool_map.get(name)
 
-    def to_openai_tools(self) -> List[dict]:
+    def to_openai_tools(self) -> List[Dict[str, Any]]:
         """Convert all tools to OpenAI format."""
         return [t.to_openai_schema() for t in self.tools]
 
-    def to_anthropic_tools(self) -> List[dict]:
+    def to_anthropic_tools(self) -> List[Dict[str, Any]]:
         """Convert all tools to Anthropic format."""
         return [t.to_anthropic_schema() for t in self.tools]
 
     def __len__(self) -> int:
         return len(self.tools)
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         return iter(self.tools)
 
 
@@ -175,7 +175,7 @@ class ToolExecutor:
         provider: Any,
         tools: Any,
         max_rounds: int = 5,
-    ):
+    ) -> None:
         self.provider = provider
         if isinstance(tools, Toolkit):
             self.toolkit = tools

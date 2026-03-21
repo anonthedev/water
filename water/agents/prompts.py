@@ -11,6 +11,13 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, Optional, List, Any
 
+# Escape sequence for literal braces: \{{ and \}}
+_ESCAPED_OPEN = "\\{{"
+_ESCAPED_CLOSE = "\\}}"
+# Sentinel replacements used during rendering to avoid interference with variable substitution
+_OPEN_SENTINEL = "\x00OPEN_BRACE\x00"
+_CLOSE_SENTINEL = "\x00CLOSE_BRACE\x00"
+
 # Pattern that matches {{variable_name}} with optional whitespace inside braces
 _VAR_PATTERN = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
@@ -55,15 +62,26 @@ class PromptTemplate:
                 f"Missing variables for template rendering: {missing}"
             )
 
+        # Protect escaped braces from variable substitution
+        result = self.template.replace(_ESCAPED_OPEN, _OPEN_SENTINEL)
+        result = result.replace(_ESCAPED_CLOSE, _CLOSE_SENTINEL)
+
         def _replacer(match: re.Match) -> str:
             name = match.group(1)
             return str(variables[name])
 
-        return _VAR_PATTERN.sub(_replacer, self.template)
+        result = _VAR_PATTERN.sub(_replacer, result)
+
+        # Restore escaped braces as literal double-brace characters
+        result = result.replace(_OPEN_SENTINEL, "{{")
+        result = result.replace(_CLOSE_SENTINEL, "}}")
+        return result
 
     def get_variables(self) -> List[str]:
         """Return a sorted, deduplicated list of variable names in the template."""
-        return sorted(set(_VAR_PATTERN.findall(self.template)))
+        # Strip escaped braces before scanning for real variables
+        cleaned = self.template.replace(_ESCAPED_OPEN, "").replace(_ESCAPED_CLOSE, "")
+        return sorted(set(_VAR_PATTERN.findall(cleaned)))
 
     def validate(self, available_vars: List[str]) -> List[str]:
         """Return a list of required variables **not** present in *available_vars*.

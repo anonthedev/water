@@ -160,7 +160,20 @@ def create_agentic_task(
                 return output_parser(result) if output_parser else result
 
             # ACT: process tool calls
-            assistant_msg = {"role": "assistant", "content": thought, "tool_calls": tool_calls}
+            # Normalize tool_calls for the provider (OpenAI requires type + string arguments)
+            normalized_tc = []
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                args = fn.get("arguments", {})
+                normalized_tc.append({
+                    "id": tc.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": fn.get("name", ""),
+                        "arguments": json.dumps(args) if isinstance(args, dict) else args,
+                    },
+                })
+            assistant_msg = {"role": "assistant", "content": thought, "tool_calls": normalized_tc}
             messages.append(assistant_msg)
 
             step_actions = []

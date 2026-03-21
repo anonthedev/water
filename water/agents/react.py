@@ -7,7 +7,7 @@ the iteration loop, deciding when to use tools and when to stop.
 import asyncio
 import json
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -46,6 +46,7 @@ def create_agentic_task(
     stop_condition: Optional[Callable] = None,
     observation_formatter: Optional[Callable] = None,
     output_parser: Optional[Callable] = None,
+    tool_selector: Optional[Any] = None,
     retry_count: int = 0,
     timeout: Optional[float] = None,
 ):
@@ -129,9 +130,18 @@ def create_agentic_task(
         last_response = None
 
         for iteration in range(max_iterations):
-            # Call LLM
+            # Call LLM — optionally narrow tools via tool_selector
             call_kwargs = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
-            if tools_schema:
+            if tool_selector and final_toolkit:
+                # Use the last user/assistant message as the query for tool selection
+                query = user_message
+                for m in reversed(messages):
+                    if m.get("role") in ("user", "assistant") and m.get("content"):
+                        query = m["content"]
+                        break
+                selected_toolkit = tool_selector.to_toolkit(query)
+                call_kwargs["tools"] = selected_toolkit.to_openai_tools()
+            elif tools_schema:
                 call_kwargs["tools"] = tools_schema
 
             response = await provider.complete(**call_kwargs)

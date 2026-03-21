@@ -129,10 +129,19 @@ class RetryWithFeedback:
             exhaustion an extra key ``__retry_exhausted`` is set to ``True``
             and ``__violations`` contains all accumulated failures.
         """
+        log_extra = {"execution_id": execution_id, "flow_id": flow_id}
         all_violations: List[GuardrailResult] = []
         current_params = dict(params)  # shallow copy so we don't mutate caller
 
         for attempt in range(1 + self.max_retries):
+            logger.info(
+                "Executing attempt %d/%d (execution_id=%s, flow_id=%s)",
+                attempt + 1,
+                1 + self.max_retries,
+                execution_id,
+                flow_id,
+                extra=log_extra,
+            )
             result = await execute_fn(current_params, context)
 
             # --- guardrail check ---
@@ -140,9 +149,26 @@ class RetryWithFeedback:
             failures = [r for r in check_results if not r.passed]
 
             if not failures:
+                logger.info(
+                    "Attempt %d passed all guardrails (execution_id=%s, flow_id=%s)",
+                    attempt + 1,
+                    execution_id,
+                    flow_id,
+                    extra=log_extra,
+                )
                 return result
 
             all_violations.extend(failures)
+            failure_reasons = "; ".join(v.reason for v in failures if v.reason)
+
+            logger.warning(
+                "Attempt %d failed guardrails: %s (execution_id=%s, flow_id=%s)",
+                attempt + 1,
+                failure_reasons,
+                execution_id,
+                flow_id,
+                extra=log_extra,
+            )
 
             # If we've used all our retries, stop.
             if attempt >= self.max_retries:
@@ -165,6 +191,13 @@ class RetryWithFeedback:
             # Backoff delay
             if self.backoff_factor > 0:
                 delay = self.backoff_factor * (attempt + 1)
+                logger.debug(
+                    "Backing off %.1fs before retry (execution_id=%s, flow_id=%s)",
+                    delay,
+                    execution_id,
+                    flow_id,
+                    extra=log_extra,
+                )
                 await asyncio.sleep(delay)
 
             # Inject feedback for next attempt
@@ -172,6 +205,14 @@ class RetryWithFeedback:
             current_params[self.feedback_key] = feedback
 
         # Retries exhausted -- return last result with metadata
+        logger.error(
+            "All %d retries exhausted, returning last result "
+            "(execution_id=%s, flow_id=%s)",
+            self.max_retries,
+            execution_id,
+            flow_id,
+            extra=log_extra,
+        )
         result["__retry_exhausted"] = True
         result["__violations"] = all_violations
         return result

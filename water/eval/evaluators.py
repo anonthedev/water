@@ -4,9 +4,12 @@ Evaluation strategies for scoring flow outputs.
 Supports deterministic checks, LLM-as-judge, and semantic similarity.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -184,6 +187,11 @@ class LLMJudge(Evaluator):
             raw_score = float(response_text)
             raw_score = max(0, min(self.scale, raw_score))
         except ValueError:
+            logger.warning(
+                "LLMJudge failed to parse score from LLM response: %r. "
+                "Returning score of 0.",
+                response_text,
+            )
             raw_score = 0
 
         normalized = raw_score / self.scale

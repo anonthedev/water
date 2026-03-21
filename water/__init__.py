@@ -119,6 +119,9 @@ from water.integrations import (
     create_a2a_task,
 )
 
+# --- Plugins ---
+from water.plugins import PluginRegistry, WaterPlugin, PluginType
+
 # --- Eval ---
 from water.eval import (
     EvalSuite,
@@ -259,6 +262,10 @@ __all__ = [
     "MessagePart",
     "A2ATaskState",
     "create_a2a_task",
+    # Plugins
+    "PluginRegistry",
+    "WaterPlugin",
+    "PluginType",
     # Eval
     "EvalSuite",
     "EvalCase",

@@ -16,6 +16,13 @@
 # --- Core ---
 from water.core import Flow, Task, create_task, ExecutionContext
 from water.core.engine import FlowPausedError, FlowStoppedError
+from water.core.versioning import (
+    FlowVersion,
+    SchemaChange,
+    CompatibilityChecker,
+    SchemaRegistry,
+    snapshot_flow_schemas,
+)
 
 # --- Storage ---
 from water.storage import (
@@ -185,6 +192,11 @@ __all__ = [
     "ExecutionContext",
     "FlowPausedError",
     "FlowStoppedError",
+    "FlowVersion",
+    "SchemaChange",
+    "CompatibilityChecker",
+    "SchemaRegistry",
+    "snapshot_flow_schemas",
     # Storage
     "StorageBackend",
     "InMemoryStorage",

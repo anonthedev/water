@@ -37,7 +37,7 @@ class GuardrailViolation(Exception):
     def __init__(self, result: GuardrailResult):
         self.result = result
         super().__init__(
-            f"Guardrail violation ({result.guardrail_name}): {result.reason}"
+            f"GuardrailViolation: {result.guardrail_name} - {result.reason}"
         )
 
 

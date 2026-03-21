@@ -100,14 +100,14 @@ class OpenAIProvider(LLMProvider):
             import openai  # lazy import
         except ImportError:
             raise ImportError(
-                "The 'openai' package is required to use OpenAIProvider. "
-                "Install it with: pip install openai"
+                f"OpenAIProvider: the 'openai' package is required. "
+                f"Install it with: pip install openai"
             )
 
         if not self.api_key:
             raise ValueError(
-                "OpenAI API key not provided. Pass api_key or set the "
-                "OPENAI_API_KEY environment variable."
+                f"OpenAIProvider: API key not provided. Pass api_key or set the "
+                f"OPENAI_API_KEY environment variable."
             )
 
         client = openai.AsyncOpenAI(api_key=self.api_key)
@@ -141,14 +141,14 @@ class AnthropicProvider(LLMProvider):
             import anthropic  # lazy import
         except ImportError:
             raise ImportError(
-                "The 'anthropic' package is required to use AnthropicProvider. "
-                "Install it with: pip install anthropic"
+                f"AnthropicProvider: the 'anthropic' package is required. "
+                f"Install it with: pip install anthropic"
             )
 
         if not self.api_key:
             raise ValueError(
-                "Anthropic API key not provided. Pass api_key or set the "
-                "ANTHROPIC_API_KEY environment variable."
+                f"AnthropicProvider: API key not provided. Pass api_key or set the "
+                f"ANTHROPIC_API_KEY environment variable."
             )
 
         # Anthropic separates system prompt from messages
@@ -184,7 +184,7 @@ class CustomProvider(LLMProvider):
 
     def __init__(self, fn: Callable) -> None:
         if not callable(fn):
-            raise ValueError("CustomProvider requires a callable")
+            raise ValueError(f"CustomProvider: requires a callable")
         self._fn = fn
 
     async def complete(self, messages: List[Dict[str, str]], **kwargs) -> dict:
@@ -224,14 +224,14 @@ def _resolve_provider(
     elif provider == "custom":
         if custom_fn is None:
             raise ValueError(
-                "CustomProvider requires a callable passed via the "
-                "'custom_fn' parameter of create_agent_task."
+                f"CustomProvider: requires a callable passed via the "
+                f"'custom_fn' parameter of create_agent_task."
             )
         return CustomProvider(fn=custom_fn)
     elif provider == "mock":
         return MockProvider()
     else:
-        raise ValueError(f"Unknown provider: {provider!r}")
+        raise ValueError(f"LLMProvider: unknown provider {provider!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -325,7 +325,7 @@ def create_agent_task(
                 user_content = prompt_template.format(**input_data)
             except KeyError as exc:
                 raise ValueError(
-                    f"Prompt template variable {exc} not found in input data. "
+                    f"AgentTask: prompt template variable {exc} not found in input data. "
                     f"Available keys: {list(input_data.keys())}"
                 )
         else:

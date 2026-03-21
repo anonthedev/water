@@ -66,7 +66,7 @@ class Tool:
     async def run(self, arguments: Dict[str, Any]) -> ToolResult:
         """Execute this tool with the given arguments."""
         if self.execute_fn is None:
-            return ToolResult(tool_name=self.name, output=None, error="No execute function", success=False)
+            return ToolResult(tool_name=self.name, output=None, error=f"Tool: {self.name} has no execute function", success=False)
         try:
             if inspect.iscoroutinefunction(self.execute_fn):
                 result = await self.execute_fn(**arguments)
@@ -236,7 +236,7 @@ class ToolExecutor:
                     result = ToolResult(
                         tool_name=tool_name,
                         output=None,
-                        error=f"Unknown tool: {tool_name}",
+                        error=f"ToolExecutor: unknown tool '{tool_name}'",
                         success=False,
                     )
 

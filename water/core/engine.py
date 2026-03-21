@@ -232,7 +232,7 @@ class ExecutionEngine:
         try:
             node_type = NodeType(node["type"])
         except ValueError:
-            raise ValueError(f"Unknown node type: {node['type']}")
+            raise ValueError(f"ExecutionEngine: unknown node type {node['type']}")
 
         handlers = {
             NodeType.SEQUENTIAL: ExecutionEngine._execute_sequential,
@@ -246,7 +246,7 @@ class ExecutionEngine:
 
         handler = handlers.get(node_type)
         if not handler:
-            raise ValueError(f"Unhandled node type: {node_type}")
+            raise ValueError(f"ExecutionEngine: unhandled node type {node_type}")
 
         return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
 
@@ -355,7 +355,7 @@ class ExecutionEngine:
                         task.input_schema(**data)
                     except Exception as ve:
                         raise ValueError(
-                            f"Task '{task.id}' input validation failed: {ve}"
+                            f"ExecutionEngine: task '{task.id}' input validation failed - {ve}"
                         ) from ve
 
                 # --- Middleware before_task ---
@@ -392,7 +392,7 @@ class ExecutionEngine:
                         task.output_schema(**result)
                     except Exception as ve:
                         raise ValueError(
-                            f"Task '{task.id}' output validation failed: {ve}"
+                            f"ExecutionEngine: task '{task.id}' output validation failed - {ve}"
                         ) from ve
 
                 # Store result in cache if enabled
@@ -663,7 +663,7 @@ class ExecutionEngine:
 
         items = data.get(over_key, [])
         if not isinstance(items, list):
-            raise ValueError(f"Map 'over' key '{over_key}' must reference a list, got {type(items).__name__}")
+            raise ValueError(f"ExecutionEngine: map 'over' key '{over_key}' must reference a list, got {type(items).__name__}")
 
         async def execute_for_item(item):
             item_data = {**data, over_key: item}
@@ -707,10 +707,10 @@ class ExecutionEngine:
         all_task_ids = set(tasks.keys())
         for task_id, deps in dependencies.items():
             if task_id not in all_task_ids:
-                raise ValueError(f"DAG dependency references unknown task: {task_id}")
+                raise ValueError(f"ExecutionEngine: DAG dependency references unknown task {task_id}")
             for dep in deps:
                 if dep not in all_task_ids:
-                    raise ValueError(f"Task '{task_id}' depends on unknown task: {dep}")
+                    raise ValueError(f"ExecutionEngine: task '{task_id}' depends on unknown task {dep}")
 
         # Detect cycles via topological sort
         in_degree = {tid: 0 for tid in all_task_ids}
@@ -723,7 +723,7 @@ class ExecutionEngine:
         # Tasks with no dependencies start first
         ready = [tid for tid, deg in in_degree.items() if deg == 0]
         if not ready and all_task_ids:
-            raise ValueError("DAG has circular dependencies")
+            raise ValueError("ExecutionEngine: DAG has circular dependencies")
 
         results: Dict[str, Any] = {}
         completed = set()
@@ -777,7 +777,7 @@ class ExecutionEngine:
                         ready.append(dependent_id)
 
         if len(completed) != len(all_task_ids):
-            raise ValueError("DAG has circular dependencies -- not all tasks completed")
+            raise ValueError("ExecutionEngine: DAG has circular dependencies - not all tasks completed")
 
         return results
 

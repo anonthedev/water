@@ -198,7 +198,13 @@ class ExecutionEngine:
 
             # Clear checkpoint on successful completion
             if checkpoint is not None:
-                await checkpoint.clear(flow_id, context.execution_id)
+                try:
+                    await checkpoint.clear(flow_id, context.execution_id)
+                except Exception as clear_err:
+                    logger.error(
+                        f"Failed to clear checkpoint for flow {flow_id} "
+                        f"(execution: {context.execution_id}): {clear_err}"
+                    )
 
         except (FlowPausedError, FlowStoppedError):
             raise

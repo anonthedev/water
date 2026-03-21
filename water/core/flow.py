@@ -39,6 +39,7 @@ class Flow:
         storage: Optional[Any] = None,
         version: Optional[str] = None,
         strict_contracts: bool = False,
+        max_concurrency: int = 10,
     ) -> None:
         """
         Initialize a new Flow.
@@ -55,6 +56,7 @@ class Flow:
         self.description: str = description if description else f"Flow {self.id}"
         self.version: Optional[str] = version
         self.strict_contracts: bool = strict_contracts
+        self.max_concurrency: int = max_concurrency
         self._tasks: List[ExecutionNode] = []
         self._registered: bool = False
         self.metadata: Dict[str, Any] = {}
@@ -705,6 +707,7 @@ class Flow:
                 middleware=self.middleware if self.middleware else None,
                 dlq=self.dlq,
                 services=self._services if self._services else None,
+                max_concurrency=self.max_concurrency,
             )
             await self.hooks.emit("on_flow_complete", flow_id=self.id, output_data=result)
             if self.events:

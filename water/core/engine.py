@@ -76,6 +76,7 @@ class ExecutionEngine:
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
         services: Optional[Dict[str, Any]] = None,
+        max_concurrency: int = 10,
     ) -> OutputData:
         """
         Execute a complete flow execution graph.
@@ -96,6 +97,8 @@ class ExecutionEngine:
             FlowPausedError: If the flow was paused during execution
             FlowStoppedError: If the flow was stopped during execution
         """
+        concurrency_semaphore = asyncio.Semaphore(max_concurrency)
+
         if resume_from:
             context = ExecutionContext(
                 flow_id=flow_id,
@@ -190,7 +193,8 @@ class ExecutionEngine:
 
                 node = execution_graph[node_index]
                 data = await ExecutionEngine._execute_node(
-                    node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
+                    node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq,
+                    concurrency_semaphore=concurrency_semaphore,
                 )
 
                 # Save checkpoint after each successful node
@@ -244,6 +248,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         """
         Route execution to the appropriate node type handler.
@@ -268,7 +273,7 @@ class ExecutionEngine:
         if not handler:
             raise ValueError(f"ExecutionEngine: unhandled node type {node_type}")
 
-        return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
+        return await handler(node, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq, concurrency_semaphore=concurrency_semaphore)
 
     @staticmethod
     async def _execute_task(
@@ -522,6 +527,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         # Support conditional skip via 'when' key
         when = node.get("when")
@@ -553,10 +559,14 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         tasks = node["tasks"]
 
         async def execute_single_task(task):
+            if concurrency_semaphore is not None:
+                async with concurrency_semaphore:
+                    return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
             return await ExecutionEngine._execute_task(task, data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq)
 
         coroutines = [execute_single_task(task) for task in tasks]
@@ -579,6 +589,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         branches = node["branches"]
 
@@ -603,6 +614,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         condition = node["condition"]
         task = node["task"]
@@ -677,6 +689,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         """
         Execute a task once per item in a list field, in parallel.
@@ -693,6 +706,11 @@ class ExecutionEngine:
 
         async def execute_for_item(item):
             item_data = {**data, over_key: item}
+            if concurrency_semaphore is not None:
+                async with concurrency_semaphore:
+                    return await ExecutionEngine._execute_task(
+                        task, item_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
+                    )
             return await ExecutionEngine._execute_task(
                 task, item_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
             )
@@ -712,6 +730,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         """
         Execute tasks as a DAG with automatic parallelization.
@@ -762,6 +781,11 @@ class ExecutionEngine:
             for dep_id in dependencies.get(task_id, []):
                 if dep_id in results:
                     task_data[f"_{dep_id}_output"] = results[dep_id]
+            if concurrency_semaphore is not None:
+                async with concurrency_semaphore:
+                    return await ExecutionEngine._execute_task(
+                        task, task_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
+                    )
             return await ExecutionEngine._execute_task(
                 task, task_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq
             )
@@ -819,6 +843,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         """
         Execute a try-catch-finally block.
@@ -930,6 +955,7 @@ class ExecutionEngine:
         telemetry: Optional[Any] = None,
         middleware: Optional[List[Any]] = None,
         dlq: Optional[Any] = None,
+        concurrency_semaphore: Optional[asyncio.Semaphore] = None,
     ) -> OutputData:
         """Execute a model-controlled agentic loop (ReAct pattern).
 

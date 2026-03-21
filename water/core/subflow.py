@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, Any, Optional, Type, Callable
+from typing import Dict, Any, Optional, Type, Callable, List
 from pydantic import BaseModel
 from water.core.task import Task
 
@@ -78,7 +78,7 @@ class SubFlow:
                 if hasattr(task, 'input_schema'):
                     return task.input_schema
         # Generic fallback
-        return type("SubFlowInput", (BaseModel,), {"__annotations__": {"data": dict}})
+        return type("SubFlowInput", (BaseModel,), {"__annotations__": {"data": Dict[str, Any]}})
 
     def _get_output_schema(self) -> Type[BaseModel]:
         """Try to get output schema from flow's last task."""
@@ -91,7 +91,7 @@ class SubFlow:
                 task = last_node['task']
                 if hasattr(task, 'output_schema'):
                     return task.output_schema
-        return type("SubFlowOutput", (BaseModel,), {"__annotations__": {"result": dict}})
+        return type("SubFlowOutput", (BaseModel,), {"__annotations__": {"result": Dict[str, Any]}})
 
 
 def compose_flows(*flows, id: Optional[str] = None, description: Optional[str] = None):

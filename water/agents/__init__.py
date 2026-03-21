@@ -81,3 +81,21 @@ from water.agents.planner import (
 from water.agents.react import (
     create_agentic_task,
 )
+from water.agents.subagent import (
+    SubAgentConfig,
+    create_sub_agent_tool,
+)
+from water.agents.memory import (
+    MemoryLayer,
+    MemoryEntry,
+    MemoryBackend,
+    InMemoryBackend,
+    FileBackend,
+    MemoryManager,
+    create_memory_tools,
+)
+from water.agents.tool_search import (
+    TFIDFScorer,
+    SemanticToolSelector,
+    create_tool_selector,
+)

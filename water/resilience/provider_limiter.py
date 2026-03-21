@@ -86,11 +86,21 @@ class ProviderRateLimiter:
         # Check TPM
         current_tokens = sum(t for _, t in self._token_usage[model])
         if estimated_tokens > 0 and current_tokens + estimated_tokens > limits.tpm:
-            # Wait for some tokens to expire
-            tpm_wait = 1.0  # Simple fixed wait
-            wait_time += tpm_wait
-            await asyncio.sleep(tpm_wait)
-            now = time.monotonic()
+            # Calculate how long until enough tokens expire to fit the new request
+            tokens_to_free = (current_tokens + estimated_tokens) - limits.tpm
+            freed = 0
+            tpm_wait = window  # worst-case: wait for the full window
+            for ts, tok in self._token_usage[model]:
+                freed += tok
+                if freed >= tokens_to_free:
+                    # This entry expires at ts + window
+                    tpm_wait = (ts + window) - now
+                    break
+            tpm_wait = max(tpm_wait, 0.0)
+            if tpm_wait > 0:
+                wait_time += tpm_wait
+                await asyncio.sleep(tpm_wait)
+                now = time.monotonic()
 
         # Record
         self._request_timestamps[model].append(now)

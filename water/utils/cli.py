@@ -438,6 +438,62 @@ def main():
         help="Dotted module path (e.g., 'cookbook.sequential_flow')",
     )
 
+    # water eval
+    eval_parser = subparsers.add_parser("eval", help="Evaluation commands")
+    eval_subparsers = eval_parser.add_subparsers(dest="eval_command", help="Eval subcommands")
+
+    # water eval run <config>
+    eval_run_parser = eval_subparsers.add_parser(
+        "run",
+        help="Run an eval suite from a config file",
+    )
+    eval_run_parser.add_argument(
+        "config",
+        help="Path to eval config file (YAML or JSON)",
+    )
+    eval_run_parser.add_argument(
+        "--flow",
+        default=None,
+        help="Override flow spec (module:variable format)",
+    )
+    eval_run_parser.add_argument(
+        "--output",
+        default=None,
+        help="Save report to file instead of printing",
+    )
+    eval_run_parser.add_argument(
+        "--format",
+        default="text",
+        choices=["text", "json"],
+        help="Output format (default: text)",
+    )
+
+    # water eval compare <baseline> <current>
+    eval_compare_parser = eval_subparsers.add_parser(
+        "compare",
+        help="Compare two eval reports for regressions",
+    )
+    eval_compare_parser.add_argument(
+        "baseline",
+        help="Path to baseline eval report (JSON)",
+    )
+    eval_compare_parser.add_argument(
+        "current",
+        help="Path to current eval report (JSON)",
+    )
+
+    # water eval list [directory]
+    eval_list_parser = eval_subparsers.add_parser(
+        "list",
+        help="List eval config files in a directory",
+    )
+    eval_list_parser.add_argument(
+        "directory",
+        nargs="?",
+        default=".",
+        help="Directory to search (default: current directory)",
+    )
+
     # water flow
     flow_parser = subparsers.add_parser("flow", help="Flow management commands")
     flow_subparsers = flow_parser.add_subparsers(dest="flow_command", help="Flow subcommands")
@@ -528,6 +584,17 @@ def main():
         cmd_dry_run(args)
     elif args.command == "list":
         cmd_list(args)
+    elif args.command == "eval":
+        from water.eval.cli import cmd_eval_run, cmd_eval_compare, cmd_eval_list
+        if args.eval_command == "run":
+            cmd_eval_run(args)
+        elif args.eval_command == "compare":
+            cmd_eval_compare(args)
+        elif args.eval_command == "list":
+            cmd_eval_list(args)
+        else:
+            eval_parser.print_help()
+            sys.exit(0)
     elif args.command == "flow":
         if args.flow_command == "prod:render":
             cmd_flow_prod_render(args)

@@ -7,3 +7,4 @@ from water.eval.evaluators import (
     SemanticSimilarity,
 )
 from water.eval.report import EvalReport
+from water.eval.config import EvalConfig, build_evaluators, build_cases

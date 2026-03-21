@@ -47,3 +47,34 @@ from water.agents.sandbox import (
     DockerSandbox,
     create_sandboxed_task,
 )
+from water.agents.fallback import (
+    FallbackChain,
+    ProviderMetrics,
+)
+from water.agents.prompts import (
+    PromptTemplate,
+    PromptLibrary,
+    PromptTemplateError,
+)
+from water.agents.streaming import (
+    StreamChunk,
+    StreamingResponse,
+    StreamingProvider,
+    MockStreamProvider,
+    OpenAIStreamProvider,
+    AnthropicStreamProvider,
+    create_streaming_agent_task,
+)
+from water.agents.batch import (
+    BatchItem,
+    BatchResult,
+    BatchProcessor,
+    create_batch_task,
+)
+from water.agents.planner import (
+    PlannerAgent,
+    TaskRegistry,
+    ExecutionPlan,
+    PlanStep,
+    create_planner_task,
+)

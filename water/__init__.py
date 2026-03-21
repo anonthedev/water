@@ -9,13 +9,15 @@
 #   water.agents        – LLM tasks, Multi-agent, Approval, Human, Sandbox
 #   water.integrations  – MCP, Chat, Streaming
 #   water.observability – Telemetry, Dashboard
+#   water.triggers      – WebhookTrigger, CronTrigger, QueueTrigger, Registry
 #   water.server        – FlowServer (FastAPI)
 #   water.utils         – Testing, Scheduler, Declarative, Secrets, CLI
 # ---------------------------------------------------------------------------
 
 # --- Core ---
-from water.core import Flow, Task, create_task, ExecutionContext
+from water.core import Flow, Task, create_task, ExecutionContext, SubFlow, compose_flows
 from water.core.engine import FlowPausedError, FlowStoppedError
+from water.core.replay import ReplayEngine, ReplayConfig, ReplayResult
 from water.core.versioning import (
     FlowVersion,
     SchemaChange,
@@ -49,6 +51,13 @@ from water.resilience import (
     DeadLetter,
     DeadLetterQueue,
     InMemoryDLQ,
+    FlowCache,
+    FlowCacheBackend,
+    InMemoryFlowCache,
+    CacheStats,
+    ProviderRateLimiter,
+    ProviderLimits,
+    LimiterMetrics,
 )
 
 # --- Middleware & Lifecycle ---
@@ -99,6 +108,24 @@ from water.agents import (
     ContextManager,
     TokenCounter,
     TruncationStrategy,
+    StreamChunk,
+    StreamingProvider,
+    MockStreamProvider,
+    OpenAIStreamProvider,
+    AnthropicStreamProvider,
+    create_streaming_agent_task,
+    FallbackChain,
+    PromptTemplate,
+    PromptLibrary,
+    BatchProcessor,
+    BatchResult,
+    BatchItem,
+    create_batch_task,
+    PlannerAgent,
+    TaskRegistry,
+    ExecutionPlan,
+    PlanStep,
+    create_planner_task,
 )
 
 # --- Integrations ---
@@ -142,6 +169,9 @@ from water.eval import (
     LLMJudge,
     SemanticSimilarity,
     EvalReport,
+    EvalConfig,
+    build_evaluators,
+    build_cases,
 )
 
 # --- Guardrails ---
@@ -154,6 +184,8 @@ from water.guardrails import (
     SchemaGuardrail,
     CostGuardrail,
     TopicGuardrail,
+    RetryWithFeedback,
+    RetryContext,
 )
 
 # --- Observability ---
@@ -168,6 +200,26 @@ from water.observability import (
     StructuredLogger,
     LogContext,
     LogExporter,
+    CostTracker,
+    CostSummary,
+    TokenUsage,
+    TaskCost,
+    BudgetExceededError,
+    auto_instrument,
+    AutoInstrumentor,
+    InstrumentationConfig,
+    InstrumentationCollector,
+    SpanRecord,
+)
+
+# --- Triggers ---
+from water.triggers import (
+    Trigger,
+    TriggerEvent,
+    WebhookTrigger,
+    CronTrigger,
+    QueueTrigger,
+    TriggerRegistry,
 )
 
 # --- Server ---
@@ -207,6 +259,8 @@ __all__ = [
     "Task",
     "create_task",
     "ExecutionContext",
+    "SubFlow",
+    "compose_flows",
     "FlowPausedError",
     "FlowStoppedError",
     "FlowVersion",
@@ -214,6 +268,9 @@ __all__ = [
     "CompatibilityChecker",
     "SchemaRegistry",
     "snapshot_flow_schemas",
+    "ReplayEngine",
+    "ReplayConfig",
+    "ReplayResult",
     # Storage
     "StorageBackend",
     "InMemoryStorage",
@@ -235,6 +292,13 @@ __all__ = [
     "DeadLetter",
     "DeadLetterQueue",
     "InMemoryDLQ",
+    "FlowCache",
+    "FlowCacheBackend",
+    "InMemoryFlowCache",
+    "CacheStats",
+    "ProviderRateLimiter",
+    "ProviderLimits",
+    "LimiterMetrics",
     # Middleware & Lifecycle
     "Middleware",
     "LoggingMiddleware",
@@ -279,6 +343,24 @@ __all__ = [
     "ContextManager",
     "TokenCounter",
     "TruncationStrategy",
+    "StreamChunk",
+    "StreamingProvider",
+    "MockStreamProvider",
+    "OpenAIStreamProvider",
+    "AnthropicStreamProvider",
+    "create_streaming_agent_task",
+    "FallbackChain",
+    "PromptTemplate",
+    "PromptLibrary",
+    "BatchProcessor",
+    "BatchResult",
+    "BatchItem",
+    "create_batch_task",
+    "PlannerAgent",
+    "TaskRegistry",
+    "ExecutionPlan",
+    "PlanStep",
+    "create_planner_task",
     # Integrations
     "MCPServer",
     "MCPClient",
@@ -318,6 +400,9 @@ __all__ = [
     "LLMJudge",
     "SemanticSimilarity",
     "EvalReport",
+    "EvalConfig",
+    "build_evaluators",
+    "build_cases",
     # Guardrails
     "Guardrail",
     "GuardrailResult",
@@ -327,6 +412,8 @@ __all__ = [
     "SchemaGuardrail",
     "CostGuardrail",
     "TopicGuardrail",
+    "RetryWithFeedback",
+    "RetryContext",
     # Observability
     "FlowDashboard",
     "TelemetryManager",
@@ -338,6 +425,23 @@ __all__ = [
     "StructuredLogger",
     "LogContext",
     "LogExporter",
+    "CostTracker",
+    "CostSummary",
+    "TokenUsage",
+    "TaskCost",
+    "BudgetExceededError",
+    "auto_instrument",
+    "AutoInstrumentor",
+    "InstrumentationConfig",
+    "InstrumentationCollector",
+    "SpanRecord",
+    # Triggers
+    "Trigger",
+    "TriggerEvent",
+    "WebhookTrigger",
+    "CronTrigger",
+    "QueueTrigger",
+    "TriggerRegistry",
     # Server
     "FlowServer",
     # Utils

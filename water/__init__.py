@@ -173,6 +173,20 @@ from water.observability import (
 # --- Server ---
 from water.server import FlowServer
 
+# --- Tasks (Standard Library) ---
+from water.tasks import (
+    http_request,
+    json_transform,
+    map_fields,
+    filter_fields,
+    file_read,
+    file_write,
+    webhook_task,
+    delay,
+    log_task,
+    noop,
+)
+
 # --- Utils ---
 from water.utils import (
     MockTask,
@@ -337,4 +351,15 @@ __all__ = [
     "SecretValue",
     "SecretsManager",
     "EnvSecretsManager",
+    # Tasks (Standard Library)
+    "http_request",
+    "json_transform",
+    "map_fields",
+    "filter_fields",
+    "file_read",
+    "file_write",
+    "webhook_task",
+    "delay",
+    "log_task",
+    "noop",
 ]

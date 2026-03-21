@@ -267,7 +267,7 @@ class ExecutionEngine:
         Execute a single task, handling both sync and async functions.
         Supports retry with backoff, per-task timeouts, hooks, events, storage recording, and telemetry.
         """
-        from water.storage import TaskRun
+        from water.storage import TaskRun, FlowStatus
         from water.resilience.cache import cache_key as _cache_key
 
         params: Dict[str, InputData] = {"input_data": data}
@@ -336,7 +336,7 @@ class ExecutionEngine:
                     execution_id=context.execution_id,
                     task_id=task.id,
                     node_index=node_index,
-                    status="running",
+                    status=FlowStatus.RUNNING,
                     input_data=data,
                     started_at=datetime.now(timezone.utc),
                 )
@@ -404,7 +404,7 @@ class ExecutionEngine:
 
                 # Update task run record
                 if storage and task_run:
-                    task_run.status = "completed"
+                    task_run.status = FlowStatus.COMPLETED
                     task_run.output_data = result
                     task_run.completed_at = datetime.now(timezone.utc)
                     await storage.save_task_run(task_run)
@@ -439,7 +439,7 @@ class ExecutionEngine:
             except Exception as e:
                 last_error = e
                 if storage and task_run:
-                    task_run.status = "failed"
+                    task_run.status = FlowStatus.FAILED
                     task_run.error = str(e)
                     task_run.completed_at = datetime.now(timezone.utc)
                     await storage.save_task_run(task_run)

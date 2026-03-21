@@ -89,6 +89,9 @@ from water.agents import (
     Toolkit,
     ToolResult,
     ToolExecutor,
+    ContextManager,
+    TokenCounter,
+    TruncationStrategy,
 )
 
 # --- Integrations ---
@@ -236,6 +239,9 @@ __all__ = [
     "Toolkit",
     "ToolResult",
     "ToolExecutor",
+    "ContextManager",
+    "TokenCounter",
+    "TruncationStrategy",
     # Integrations
     "MCPServer",
     "MCPClient",

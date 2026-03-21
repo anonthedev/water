@@ -27,6 +27,11 @@ from water.agents.human import (
     HumanInputManager,
     HumanInputRequired,
 )
+from water.agents.context import (
+    ContextManager,
+    TokenCounter,
+    TruncationStrategy,
+)
 from water.agents.tools import (
     Tool,
     Toolkit,

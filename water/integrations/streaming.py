@@ -37,9 +37,25 @@ class StreamManager:
     listen to a specific execution_id or to all executions (global).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_queue_size: int = 0, drop_policy: str = "drop_oldest") -> None:
+        """
+        Args:
+            max_queue_size: Maximum number of events a subscriber queue can hold.
+                ``0`` means unbounded (default). When a bounded queue is full,
+                the *drop_policy* determines what happens.
+            drop_policy: Policy when a bounded queue is full.
+                ``"drop_newest"`` -- the new event is discarded (default put_nowait behaviour).
+                ``"drop_oldest"`` -- the oldest event is removed to make room for the new one.
+        """
+        if drop_policy not in ("drop_oldest", "drop_newest"):
+            raise ValueError(
+                f"Invalid drop_policy {drop_policy!r}. "
+                "Must be 'drop_oldest' or 'drop_newest'."
+            )
         self._subscribers: Dict[str, List[asyncio.Queue]] = {}  # execution_id -> queues
         self._global_subscribers: List[asyncio.Queue] = []
+        self.max_queue_size = max_queue_size
+        self.drop_policy = drop_policy
 
     def subscribe(self, execution_id: Optional[str] = None) -> asyncio.Queue:
         """Subscribe to events for a specific execution or all executions.
@@ -51,7 +67,7 @@ class StreamManager:
         Returns:
             An asyncio.Queue that will receive StreamEvent instances.
         """
-        queue: asyncio.Queue = asyncio.Queue()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=self.max_queue_size)
         if execution_id is None:
             self._global_subscribers.append(queue)
         else:
@@ -92,23 +108,55 @@ class StreamManager:
         """
         # Send to execution-specific subscribers
         for queue in self._subscribers.get(event.execution_id, []):
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                logger.warning(
-                    "Stream subscriber queue full, dropping event %s for execution %s",
-                    event.event_type,
-                    event.execution_id,
-                )
+            self._enqueue(queue, event, execution_id=event.execution_id)
 
         # Send to global subscribers
         for queue in self._global_subscribers:
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
+            self._enqueue(queue, event, execution_id=None)
+
+    def _enqueue(self, queue: asyncio.Queue, event: StreamEvent, execution_id: Optional[str] = None) -> None:
+        """Place an event on a subscriber queue, respecting the drop policy.
+
+        Args:
+            queue: Target subscriber queue.
+            event: The event to enqueue.
+            execution_id: Execution id for log context, or None for global subscribers.
+        """
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            if self.drop_policy == "drop_oldest":
+                # Remove the oldest event to make room
+                try:
+                    dropped = queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                else:
+                    logger.warning(
+                        "Stream subscriber queue full (policy=drop_oldest), "
+                        "dropped oldest event %s to enqueue %s "
+                        "(execution_id=%s)",
+                        dropped.event_type,
+                        event.event_type,
+                        execution_id,
+                    )
+                # Now there should be room
+                try:
+                    queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        "Stream subscriber queue still full after drop_oldest, "
+                        "dropping new event %s (execution_id=%s)",
+                        event.event_type,
+                        execution_id,
+                    )
+            else:
+                # drop_newest: discard the incoming event
                 logger.warning(
-                    "Global stream subscriber queue full, dropping event %s",
+                    "Stream subscriber queue full (policy=drop_newest), "
+                    "dropping event %s (execution_id=%s)",
                     event.event_type,
+                    execution_id,
                 )
 
     async def stream_events(self, execution_id: Optional[str] = None) -> AsyncGenerator[StreamEvent, None]:

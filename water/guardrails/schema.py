@@ -65,8 +65,33 @@ class SchemaGuardrail(Guardrail):
             self.schema(**target)
             return GuardrailResult(passed=True)
         except Exception as e:
+            # Build specific error messages with field names, expected types, and actual values
+            from pydantic import ValidationError
+
+            error_details = []
+            if isinstance(e, ValidationError):
+                for err in e.errors():
+                    field = " -> ".join(str(loc) for loc in err.get("loc", []))
+                    msg = err.get("msg", "")
+                    expected_type = err.get("type", "unknown")
+                    # Try to get the actual value from the target data
+                    actual_value = target
+                    for loc_part in err.get("loc", []):
+                        if isinstance(actual_value, dict):
+                            actual_value = actual_value.get(loc_part, "<missing>")
+                        else:
+                            actual_value = "<missing>"
+                            break
+                    error_details.append(
+                        f"Field '{field}': {msg} (expected type: {expected_type}, "
+                        f"actual value: {actual_value!r})"
+                    )
+            else:
+                error_details.append(str(e))
+
+            reason = "Schema validation failed:\n  " + "\n  ".join(error_details)
             return GuardrailResult(
                 passed=False,
-                reason=f"Schema validation failed: {e}",
-                details={"errors": str(e)},
+                reason=reason,
+                details={"errors": error_details},
             )

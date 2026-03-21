@@ -265,6 +265,84 @@ sandboxed = create_sandboxed_task(
 )
 ```
 
+### Agentic Loop (ReAct)
+
+The model controls the loop. `create_agentic_task` runs a Think-Act-Observe-Repeat cycle where the LLM decides which tools to call and when to stop:
+
+```python
+from water.agents import create_agentic_task, Tool
+
+search = Tool(name="search", description="Search the web",
+    input_schema={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+    execute=lambda query: f"Results for {query}")
+
+agent = create_agentic_task(
+    id="researcher",
+    provider=OpenAIProvider(model="gpt-4o"),
+    tools=[search],
+    system_prompt="You are a research assistant.",
+    max_iterations=10,
+    stop_tool=True,  # Inject __done__ tool for explicit stop signaling
+    on_step=lambda i, step: print(f"Step {i}: {step['think'][:50]}"),
+    on_tool_call=lambda name, args: False if name == "dangerous" else True,
+    stop_condition=lambda steps, history: len(history) >= 5,
+)
+```
+
+### Sub-Agent Isolation
+
+Create child agents that run their own isolated ReAct loops with separate context windows:
+
+```python
+from water.agents import SubAgentConfig, create_sub_agent_tool
+
+researcher = create_sub_agent_tool(SubAgentConfig(
+    id="researcher",
+    provider=OpenAIProvider(model="gpt-4o"),
+    tools=[search_tool, read_file_tool],
+    system_prompt="You are a research specialist.",
+    max_iterations=5,
+))
+
+# Parent agent uses the sub-agent as a regular tool
+parent = create_agentic_task(
+    id="orchestrator", provider=provider,
+    tools=[researcher, write_tool, test_tool],
+    system_prompt="Delegate research to your researcher.",
+)
+```
+
+### Layered Memory
+
+Priority-ordered memory (ORG > PROJECT > USER > SESSION > AUTO_LEARNED) with automatic resolution:
+
+```python
+from water.agents import MemoryManager, MemoryLayer, create_memory_tools
+
+memory = MemoryManager()
+await memory.add("timeout", "30s", MemoryLayer.ORG)
+await memory.add("timeout", "5s", MemoryLayer.SESSION)
+entry = await memory.get("timeout")  # "30s" — ORG wins
+
+# Give agents tools to manage their own memory
+memory_tools = create_memory_tools(memory)  # memory_store, memory_recall, memory_list
+```
+
+### Semantic Tool Search
+
+TF-IDF based tool selection for large toolkits — no external dependencies:
+
+```python
+from water.agents import create_tool_selector
+
+selector = create_tool_selector(tools=all_tools, top_k=5, always_include=["bash"])
+
+agent = create_agentic_task(
+    id="smart-agent", provider=provider, tools=all_tools,
+    tool_selector=selector,  # Narrows tools per iteration automatically
+)
+```
+
 ## Guardrails
 
 Validate, filter, and constrain agent outputs:
@@ -551,7 +629,8 @@ water flow prod:render --app playground
 water/
 ├── core/           # Flow, Task, ExecutionEngine, Context, SubFlow, Replay, Versioning
 ├── agents/         # LLM tasks, streaming, multi-agent, tools, context, prompts,
-│                   #   fallback, batch, planner, approval, human-in-the-loop, sandbox
+│                   #   fallback, batch, planner, approval, human-in-the-loop, sandbox,
+│                   #   agentic loop (ReAct), sub-agents, layered memory, tool search
 ├── guardrails/     # Content filter, schema, cost, topic guardrails, retry-with-feedback
 ├── eval/           # EvalSuite, evaluators, CLI, YAML/JSON config
 ├── storage/        # InMemory, SQLite, Redis, Postgres backends
@@ -575,7 +654,8 @@ The [`cookbook/`](cookbook/) directory has 73 runnable examples organized by cat
 | Category | Examples |
 |----------|----------|
 | [**core/**](cookbook/core/) | Sequential, parallel, branching, loops, map, DAG, subflow, try-catch, replay, versioning, validation, contracts |
-| [**agents/**](cookbook/agents/) | LLM tasks, streaming, multi-agent, tools, fallback chains, prompts, batch, planner, approval, human-in-the-loop, sandbox, guardrails, eval |
+| [**agents/**](cookbook/agents/) | LLM tasks, streaming, multi-agent, tools, fallback chains, prompts, batch, planner, approval, human-in-the-loop, sandbox, agentic loop, sub-agents, memory, tool search |
+| [**real_world/**](cookbook/real_world/) | Claude Code-style coding agent |
 | [**resilience/**](cookbook/resilience/) | Circuit breaker, rate limiting, provider rate limits, flow cache, checkpointing, DLQ, caching, retry/timeout |
 | [**observability/**](cookbook/observability/) | Cost tracking, auto-instrumentation, structured logging, tracing, telemetry, dashboard |
 | [**integrations/**](cookbook/integrations/) | MCP, A2A protocol, chat bots, SSE streaming, triggers |

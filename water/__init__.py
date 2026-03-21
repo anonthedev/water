@@ -115,6 +115,18 @@ from water.integrations import (
     create_a2a_task,
 )
 
+# --- Eval ---
+from water.eval import (
+    EvalSuite,
+    EvalCase,
+    Evaluator,
+    ExactMatch,
+    ContainsMatch,
+    LLMJudge,
+    SemanticSimilarity,
+    EvalReport,
+)
+
 # --- Guardrails ---
 from water.guardrails import (
     Guardrail,
@@ -239,6 +251,15 @@ __all__ = [
     "MessagePart",
     "A2ATaskState",
     "create_a2a_task",
+    # Eval
+    "EvalSuite",
+    "EvalCase",
+    "Evaluator",
+    "ExactMatch",
+    "ContainsMatch",
+    "LLMJudge",
+    "SemanticSimilarity",
+    "EvalReport",
     # Guardrails
     "Guardrail",
     "GuardrailResult",

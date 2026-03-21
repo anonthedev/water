@@ -10,9 +10,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from water.core.types import SerializableMixin
+
 
 @dataclass
-class TraceSpan:
+class TraceSpan(SerializableMixin):
     """A single span in a trace, representing one task execution."""
     span_id: str
     task_id: str
@@ -49,7 +51,7 @@ class TraceSpan:
 
 
 @dataclass
-class Trace:
+class Trace(SerializableMixin):
     """A complete execution trace for a flow run."""
     trace_id: str
     flow_id: str

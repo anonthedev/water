@@ -11,9 +11,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List
 
+from water.core.types import SerializableMixin
+
 
 @dataclass
-class ReplayConfig:
+class ReplayConfig(SerializableMixin):
     """Configuration that controls how a replay is performed."""
 
     from_task: Optional[str] = None
@@ -23,7 +25,7 @@ class ReplayConfig:
 
 
 @dataclass
-class ReplayResult:
+class ReplayResult(SerializableMixin):
     """Outcome of a replay execution."""
 
     original_session_id: str

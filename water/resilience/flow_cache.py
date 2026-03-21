@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Callable, List
 from abc import ABC, abstractmethod
 
+from water.core.types import SerializableMixin
+
 
 class FlowCacheBackend(ABC):
     """Abstract async backend for flow-level caching."""
@@ -75,7 +77,7 @@ class InMemoryFlowCache(FlowCacheBackend):
 
 
 @dataclass
-class CacheEntry:
+class CacheEntry(SerializableMixin):
     """Represents a single cached flow result."""
 
     key: str

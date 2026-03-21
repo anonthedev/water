@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timezone
+import copy
 import uuid
 
 from water.core.types import OutputData
@@ -170,10 +171,11 @@ class ExecutionContext:
             input_data=self.initial_input
         )
 
-        # Copy task outputs, history, and services to child
-        child_context._task_outputs = self._task_outputs.copy()
-        child_context._step_history = self._step_history.copy()
-        child_context._services = self._services.copy()
+        # Deep-copy mutable state so parallel child tasks cannot mutate
+        # each other's data or the parent's data.
+        child_context._task_outputs = copy.deepcopy(self._task_outputs)
+        child_context._step_history = copy.deepcopy(self._step_history)
+        child_context._services = copy.deepcopy(self._services)
         child_context.execution_start_time = self.execution_start_time
 
         return child_context

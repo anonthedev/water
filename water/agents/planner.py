@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from water.core.task import Task
 from water.agents.llm import LLMProvider
+from water.core.types import SerializableMixin
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +24,7 @@ from water.agents.llm import LLMProvider
 # ---------------------------------------------------------------------------
 
 @dataclass
-class PlanStep:
+class PlanStep(SerializableMixin):
     """A single step within an execution plan."""
     task_name: str
     input_mapping: Dict[str, str] = field(default_factory=dict)
@@ -31,7 +32,7 @@ class PlanStep:
 
 
 @dataclass
-class ExecutionPlan:
+class ExecutionPlan(SerializableMixin):
     """An ordered sequence of PlanSteps produced by the planner."""
     steps: List[PlanStep]
     goal: str = ""

@@ -2,6 +2,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, List, Callable
 
+from water.core.types import SerializableMixin
+
 
 @dataclass
 class InstrumentationConfig:
@@ -14,7 +16,7 @@ class InstrumentationConfig:
 
 
 @dataclass
-class SpanRecord:
+class SpanRecord(SerializableMixin):
     """Internal span record for when OTel is not available."""
     name: str
     kind: str = "internal"  # internal, flow, task, llm

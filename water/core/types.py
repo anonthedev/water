@@ -1,5 +1,30 @@
+import dataclasses
 from typing import Any, Callable, Dict, List, Union
 from typing_extensions import TypedDict
+
+
+class SerializableMixin:
+    """Mixin that adds to_dict() serialization to dataclasses."""
+
+    def to_dict(self) -> Dict[str, Any]:
+        result = {}
+        for f in dataclasses.fields(self):
+            value = getattr(self, f.name)
+            if hasattr(value, 'to_dict'):
+                result[f.name] = value.to_dict()
+            elif isinstance(value, list):
+                result[f.name] = [
+                    item.to_dict() if hasattr(item, 'to_dict') else item
+                    for item in value
+                ]
+            elif isinstance(value, dict):
+                result[f.name] = {
+                    k: v.to_dict() if hasattr(v, 'to_dict') else v
+                    for k, v in value.items()
+                }
+            else:
+                result[f.name] = value
+        return result
 
 # Forward declaration for ExecutionContext
 from typing import TYPE_CHECKING

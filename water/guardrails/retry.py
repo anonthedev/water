@@ -8,14 +8,18 @@ and optional exponential backoff.
 """
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+logger = logging.getLogger(__name__)
+
 from water.guardrails.base import GuardrailResult
+from water.core.types import SerializableMixin
 
 
 @dataclass
-class RetryContext:
+class RetryContext(SerializableMixin):
     """Snapshot of state available inside a retry iteration."""
 
     attempt: int
@@ -99,6 +103,8 @@ class RetryWithFeedback:
         check_fn: Callable[[Dict[str, Any]], List[GuardrailResult]],
         params: Dict[str, Any],
         context: Any = None,
+        execution_id: Optional[str] = None,
+        flow_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute *execute_fn* in a guardrail-driven retry loop.
 

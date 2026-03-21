@@ -15,6 +15,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 from pydantic import BaseModel
 
 from water.core.task import Task
+from water.core.types import SerializableMixin
 
 
 # ---------------------------------------------------------------------------
@@ -22,7 +23,7 @@ from water.core.task import Task
 # ---------------------------------------------------------------------------
 
 @dataclass
-class BatchItem:
+class BatchItem(SerializableMixin):
     """Tracks a single item within a batch run."""
 
     index: int
@@ -33,7 +34,7 @@ class BatchItem:
 
 
 @dataclass
-class BatchResult:
+class BatchResult(SerializableMixin):
     """Aggregated result of a batch run."""
 
     items: List[BatchItem] = field(default_factory=list)

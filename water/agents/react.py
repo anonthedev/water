@@ -9,11 +9,25 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
+from pydantic import BaseModel
+
 from water.agents.tools import Tool, Toolkit
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["create_agentic_task"]
+
+
+class AgenticInput(BaseModel):
+    """Default input schema for agentic tasks."""
+    prompt: str = ""
+
+
+class AgenticOutput(BaseModel):
+    """Default output schema for agentic tasks."""
+    response: str = ""
+    iterations: int = 0
+    tool_history: list = []
 
 
 def create_agentic_task(
@@ -77,10 +91,12 @@ def create_agentic_task(
         )
         all_tools.append(done_tool)
 
-    final_toolkit = Toolkit(tools=all_tools) if all_tools else None
+    final_toolkit = Toolkit(name="agentic_tools", tools=all_tools) if all_tools else None
     tools_schema = final_toolkit.to_openai_tools() if final_toolkit else None
 
-    async def execute(data):
+    async def execute(params, context=None):
+        data = params.get("input_data", params) if isinstance(params, dict) else params
+
         if max_iterations <= 0:
             raise ValueError(f"max_iterations must be > 0, got {max_iterations}")
 
@@ -136,15 +152,15 @@ def create_agentic_task(
                     return output_parser(result) if output_parser else result
 
                 if final_toolkit:
-                    tool = final_toolkit._tools.get(tool_name)
+                    tool = final_toolkit.get(tool_name)
                     if tool:
-                        try:
-                            if isinstance(tool_args, str):
-                                tool_args = json.loads(tool_args)
-                            result = tool.execute(**tool_args) if not asyncio.iscoroutinefunction(tool.execute) else await tool.execute(**tool_args)
-                            tool_result = {"success": True, "result": result}
-                        except Exception as e:
-                            tool_result = {"success": False, "error": str(e)}
+                        if isinstance(tool_args, str):
+                            tool_args = json.loads(tool_args)
+                        tool_run_result = await tool.run(tool_args)
+                        if tool_run_result.success:
+                            tool_result = {"success": True, "result": tool_run_result.output}
+                        else:
+                            tool_result = {"success": False, "error": tool_run_result.error}
                     else:
                         tool_result = {"success": False, "error": f"Tool '{tool_name}' not found"}
                 else:
@@ -159,8 +175,11 @@ def create_agentic_task(
 
     task = Task(
         id=id or "agentic_task",
+        input_schema=AgenticInput,
+        output_schema=AgenticOutput,
         execute=execute,
         retry_count=retry_count,
         timeout=timeout,
+        validate_schema=False,
     )
     return task

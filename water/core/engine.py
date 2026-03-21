@@ -1014,7 +1014,7 @@ class ExecutionEngine:
             if isinstance(tools, Toolkit):
                 toolkit = tools
             elif isinstance(tools, list):
-                toolkit = Toolkit(tools=tools)
+                toolkit = Toolkit(name="agentic_loop_tools", tools=tools)
             tools_schema = toolkit.to_openai_tools()
 
         # Build initial messages
@@ -1110,16 +1110,16 @@ class ExecutionEngine:
 
                 # Execute tool
                 if toolkit:
-                    tool = toolkit._tools.get(tool_name)
+                    tool = toolkit.get(tool_name)
                     if tool:
-                        try:
-                            if isinstance(tool_args, str):
-                                import json
-                                tool_args = json.loads(tool_args)
-                            result = tool.execute(**tool_args) if not asyncio.iscoroutinefunction(tool.execute) else await tool.execute(**tool_args)
-                            tool_result = {"success": True, "result": result}
-                        except Exception as e:
-                            tool_result = {"success": False, "error": str(e)}
+                        if isinstance(tool_args, str):
+                            import json
+                            tool_args = json.loads(tool_args)
+                        tool_run_result = await tool.run(tool_args)
+                        if tool_run_result.success:
+                            tool_result = {"success": True, "result": tool_run_result.output}
+                        else:
+                            tool_result = {"success": False, "error": tool_run_result.error}
                     else:
                         tool_result = {"success": False, "error": f"Tool '{tool_name}' not found"}
                 else:

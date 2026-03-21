@@ -757,7 +757,40 @@ class ExecutionEngine:
                 if dep not in all_task_ids:
                     raise ValueError(f"ExecutionEngine: task '{task_id}' depends on unknown task {dep}")
 
-        # Detect cycles via topological sort
+        # --- Cycle detection via DFS-based topological sort ---
+        # Build adjacency list (dependency -> dependents)
+        adjacency: Dict[str, List[str]] = {tid: [] for tid in all_task_ids}
+        for task_id, deps in dependencies.items():
+            for dep in deps:
+                adjacency[dep].append(task_id)
+
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {tid: WHITE for tid in all_task_ids}
+        cycle_path: List[str] = []
+
+        def _dfs_visit(node_id: str) -> bool:
+            """Return True if a cycle is detected."""
+            color[node_id] = GRAY
+            cycle_path.append(node_id)
+            for neighbor in adjacency[node_id]:
+                if color[neighbor] == GRAY:
+                    # Found a back-edge -- cycle detected
+                    cycle_start = cycle_path.index(neighbor)
+                    cycle_nodes = cycle_path[cycle_start:]
+                    raise ValueError(
+                        f"DAG contains a cycle: {' -> '.join(cycle_nodes + [neighbor])}"
+                    )
+                if color[neighbor] == WHITE:
+                    _dfs_visit(neighbor)
+            cycle_path.pop()
+            color[node_id] = BLACK
+            return False
+
+        for tid in all_task_ids:
+            if color[tid] == WHITE:
+                _dfs_visit(tid)
+
+        # Compute in-degrees for scheduling
         in_degree = {tid: 0 for tid in all_task_ids}
         dependents: Dict[str, List[str]] = {tid: [] for tid in all_task_ids}
         for task_id, deps in dependencies.items():

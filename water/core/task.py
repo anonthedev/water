@@ -9,6 +9,13 @@ if TYPE_CHECKING:
     from water.core.types import InputData, OutputData
     from water.core.context import ExecutionContext
 
+
+__all__ = [
+    "Task",
+    "create_task",
+]
+
+
 class Task:
     """
     A single executable unit within a Water flow.

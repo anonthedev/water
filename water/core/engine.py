@@ -19,6 +19,13 @@ from water.core.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "NodeType",
+    "FlowPausedError",
+    "FlowStoppedError",
+    "ExecutionEngine",
+]
+
 class NodeType(Enum):
     """Enumeration of supported execution node types."""
     SEQUENTIAL = "sequential"

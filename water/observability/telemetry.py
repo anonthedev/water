@@ -1,3 +1,10 @@
+__all__ = [
+    "get_tracer",
+    "TelemetryManager",
+    "NoOpTelemetry",
+    "is_otel_available",
+]
+
 """
 Optional OpenTelemetry integration for Water flows.
 

@@ -1,3 +1,11 @@
+__all__ = [
+    "PlanStep",
+    "ExecutionPlan",
+    "TaskRegistry",
+    "PlannerAgent",
+    "create_planner_task",
+]
+
 # water/agents/planner.py
 """
 Dynamic Task Injection (LLM-Driven Flow Planning) for Water.

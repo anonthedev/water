@@ -6,6 +6,12 @@ import uuid
 
 from pydantic import BaseModel
 
+
+__all__ = [
+    "Flow",
+]
+
+
 logger = logging.getLogger(__name__)
 
 from water.core.engine import ExecutionEngine, NodeType, FlowPausedError, FlowStoppedError
@@ -331,6 +337,80 @@ class Flow:
             "condition": condition,
             "task": task,
             "max_iterations": max_iterations
+        }
+        self._tasks.append(node)
+        return self
+
+    def agentic_loop(
+        self,
+        provider,
+        tools=None,
+        system_prompt: str = "",
+        prompt_template: str = "",
+        max_iterations: int = 10,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        stop_tool: bool = False,
+    ) -> 'Flow':
+        """Add a model-controlled agentic loop (ReAct pattern).
+
+        Unlike flow.loop() where a developer-defined condition controls iteration,
+        here the LLM decides when to stop by either returning a response without
+        tool calls or by calling the special __done__ tool.
+
+        Args:
+            provider: LLM provider instance for making completions.
+            tools: List of Tool objects or a Toolkit instance.
+            system_prompt: System prompt for the agent.
+            prompt_template: Template string with {variable} placeholders for input data.
+            max_iterations: Safety limit on iterations (default 10).
+            temperature: LLM temperature setting.
+            max_tokens: Max tokens for LLM response.
+            stop_tool: If True, inject a __done__ tool for explicit completion signaling.
+
+        Returns:
+            Self for method chaining.
+        """
+        self._validate_registration_state()
+
+        if max_iterations <= 0:
+            raise ValueError(f"Flow: max_iterations must be > 0, got {max_iterations}")
+
+        # Handle stop tool injection
+        actual_tools = tools
+        if stop_tool:
+            from water.agents.tools import Tool, Toolkit
+            done_tool = Tool(
+                name="__done__",
+                description="Call this tool when you have completed the task and want to provide your final answer.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "final_answer": {"type": "string", "description": "Your final answer to the user's request"},
+                        "metadata": {"type": "object", "description": "Optional metadata about the result", "default": {}},
+                    },
+                    "required": ["final_answer"],
+                },
+                execute=lambda final_answer, metadata=None: {"final_answer": final_answer, "metadata": metadata or {}},
+            )
+            if actual_tools is None:
+                actual_tools = [done_tool]
+            elif isinstance(actual_tools, list):
+                actual_tools = actual_tools + [done_tool]
+            elif isinstance(actual_tools, Toolkit):
+                actual_tools = list(actual_tools) + [done_tool]
+
+        node = {
+            "type": "agentic_loop",
+            "provider": provider,
+            "tools": actual_tools,
+            "system_prompt": system_prompt,
+            "max_iterations": max_iterations,
+            "config": {
+                "prompt_template": prompt_template,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
         }
         self._tasks.append(node)
         return self

@@ -4,6 +4,11 @@ from typing import Dict, Any, Optional, Type, Callable, List
 from pydantic import BaseModel
 from water.core.task import Task
 
+__all__ = [
+    "SubFlow",
+    "compose_flows",
+]
+
 logger = logging.getLogger(__name__)
 
 

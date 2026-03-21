@@ -1,3 +1,11 @@
+__all__ = [
+    "FlowCacheBackend",
+    "InMemoryFlowCache",
+    "CacheEntry",
+    "CacheStats",
+    "FlowCache",
+]
+
 """
 Flow-level output caching for Water flows.
 

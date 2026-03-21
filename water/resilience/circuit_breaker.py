@@ -1,3 +1,8 @@
+__all__ = [
+    "CircuitBreakerOpen",
+    "CircuitBreaker",
+]
+
 """
 Circuit Breaker pattern for protecting external API calls.
 

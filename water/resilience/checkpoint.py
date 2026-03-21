@@ -1,3 +1,8 @@
+__all__ = [
+    "CheckpointBackend",
+    "InMemoryCheckpoint",
+]
+
 """
 Checkpoint backend for crash recovery in long-running flows.
 

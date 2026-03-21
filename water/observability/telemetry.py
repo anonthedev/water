@@ -4,31 +4,45 @@ Optional OpenTelemetry integration for Water flows.
 If opentelemetry is installed, provides automatic span creation for
 flow and task execution. If not installed, all operations are no-ops.
 """
+import contextvars
 import logging
 from typing import Any, Dict, Optional
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-_tracer = None
-_otel_available = False
+_tracer_var: contextvars.ContextVar[Optional[Any]] = contextvars.ContextVar(
+    "_tracer_var", default=None
+)
+_otel_available_var: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "_otel_available_var", default=False
+)
 
 try:
     from opentelemetry import trace
     from opentelemetry.trace import StatusCode
-    _otel_available = True
+
+    _otel_available_var = contextvars.ContextVar(
+        "_otel_available_var", default=True
+    )
 except ImportError:
     pass
 
 
+def is_otel_enabled() -> bool:
+    """Return whether OpenTelemetry is available in the current context."""
+    return _otel_available_var.get()
+
+
 def get_tracer(name: str = "water"):
     """Get or create an OpenTelemetry tracer. Returns None if OTel is not installed."""
-    global _tracer
-    if not _otel_available:
+    if not is_otel_enabled():
         return None
-    if _tracer is None:
-        _tracer = trace.get_tracer(name)
-    return _tracer
+    tracer = _tracer_var.get()
+    if tracer is None:
+        tracer = trace.get_tracer(name)
+        _tracer_var.set(tracer)
+    return tracer
 
 
 class TelemetryManager:
@@ -40,7 +54,7 @@ class TelemetryManager:
     """
 
     def __init__(self, enabled: bool = True, tracer_name: str = "water") -> None:
-        self.enabled = enabled and _otel_available
+        self.enabled = enabled and is_otel_enabled()
         self._tracer_name = tracer_name
         self._tracer = get_tracer(tracer_name) if self.enabled else None
 
@@ -102,4 +116,4 @@ class NoOpTelemetry(TelemetryManager):
 
 # Convenience function to check if OTel is available
 def is_otel_available() -> bool:
-    return _otel_available
+    return is_otel_enabled()

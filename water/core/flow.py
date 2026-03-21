@@ -353,12 +353,16 @@ class Flow:
         temperature: float = 0.7,
         max_tokens: int = 1024,
         stop_tool: bool = False,
+        on_step=None,
+        on_tool_call=None,
+        stop_condition=None,
+        observation_formatter=None,
     ) -> 'Flow':
         """Add a model-controlled agentic loop (ReAct pattern).
 
-        Unlike flow.loop() where a developer-defined condition controls iteration,
-        here the LLM decides when to stop by either returning a response without
-        tool calls or by calling the special __done__ tool.
+        The loop follows Think-Act-Observe-Repeat: the LLM reasons (Think),
+        calls tools (Act), receives results (Observe), and repeats until it
+        responds without tool calls or calls __done__.
 
         Args:
             provider: LLM provider instance for making completions.
@@ -369,6 +373,13 @@ class Flow:
             temperature: LLM temperature setting.
             max_tokens: Max tokens for LLM response.
             stop_tool: If True, inject a __done__ tool for explicit completion signaling.
+            on_step: Callback(iteration, step_dict) called after each Think-Act-Observe cycle.
+                step_dict has keys: think (str), act (list of tool calls), observe (list of results).
+            on_tool_call: Callback(tool_name, tool_args) called before each tool execution.
+                Return False to reject, a dict to modify args, or None/True to proceed.
+            stop_condition: Callback(steps, tool_history) returning True to stop the loop early.
+            observation_formatter: Callback(tool_name, tool_args, tool_result) returning a string
+                to customize how tool results are formatted before feeding back to the LLM.
 
         Returns:
             Self for method chaining.
@@ -412,6 +423,10 @@ class Flow:
                 "prompt_template": prompt_template,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                "on_step": on_step,
+                "on_tool_call": on_tool_call,
+                "stop_condition": stop_condition,
+                "observation_formatter": observation_formatter,
             },
         }
         self._tasks.append(node)

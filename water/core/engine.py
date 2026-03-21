@@ -1033,7 +1033,12 @@ class ExecutionEngine:
         messages.append({"role": "user", "content": user_message})
 
         tool_history = []
+        steps = []
         last_response = None
+        on_step = config.get("on_step")
+        on_tool_call = config.get("on_tool_call")
+        stop_condition = config.get("stop_condition")
+        observation_formatter = config.get("observation_formatter")
 
         for iteration in range(max_iterations):
             # Check for pause/stop signals during loops
@@ -1079,20 +1084,31 @@ class ExecutionEngine:
             response = await provider.complete(**call_kwargs)
             last_response = response
 
+            # THINK: capture the model's reasoning
+            thought = response.get("content", "")
+
             # Check for tool calls
             tool_calls = response.get("tool_calls", [])
 
             if not tool_calls:
                 # LLM is done - no more tool calls
+                step = {"think": thought, "act": None, "observe": None}
+                steps.append(step)
+                if on_step:
+                    await on_step(iteration + 1, step) if asyncio.iscoroutinefunction(on_step) else on_step(iteration + 1, step)
                 return {
-                    "response": response.get("content", ""),
+                    "response": thought,
                     "tool_history": tool_history,
+                    "steps": steps,
                     "iterations": iteration + 1,
                 }
 
-            # Process tool calls
-            assistant_message = {"role": "assistant", "content": response.get("content", ""), "tool_calls": tool_calls}
+            # ACT: process tool calls
+            assistant_message = {"role": "assistant", "content": thought, "tool_calls": tool_calls}
             messages.append(assistant_message)
+
+            step_actions = []
+            step_observations = []
 
             for tool_call in tool_calls:
                 tool_name = tool_call.get("function", {}).get("name", "")
@@ -1101,12 +1117,30 @@ class ExecutionEngine:
 
                 # Check for __done__ signal
                 if tool_name == "__done__":
+                    step = {"think": thought, "act": [{"tool": "__done__", "arguments": tool_args}], "observe": None}
+                    steps.append(step)
+                    if on_step:
+                        await on_step(iteration + 1, step) if asyncio.iscoroutinefunction(on_step) else on_step(iteration + 1, step)
                     return {
                         "response": tool_args.get("final_answer", ""),
                         "tool_history": tool_history,
+                        "steps": steps,
                         "iterations": iteration + 1,
                         "metadata": tool_args.get("metadata", {}),
                     }
+
+                # on_tool_call hook: can approve/reject/modify
+                if on_tool_call:
+                    decision = await on_tool_call(tool_name, tool_args) if asyncio.iscoroutinefunction(on_tool_call) else on_tool_call(tool_name, tool_args)
+                    if decision is False:
+                        tool_result = {"success": False, "error": f"Tool call '{tool_name}' rejected by on_tool_call hook"}
+                        step_actions.append({"tool": tool_name, "arguments": tool_args, "rejected": True})
+                        step_observations.append({"tool": tool_name, "result": tool_result})
+                        tool_history.append({"iteration": iteration + 1, "tool": tool_name, "arguments": tool_args, "result": tool_result})
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": tool_result["error"]})
+                        continue
+                    elif isinstance(decision, dict):
+                        tool_args = decision
 
                 # Execute tool
                 if toolkit:
@@ -1125,6 +1159,9 @@ class ExecutionEngine:
                 else:
                     tool_result = {"success": False, "error": "No tools available"}
 
+                step_actions.append({"tool": tool_name, "arguments": tool_args})
+                step_observations.append({"tool": tool_name, "result": tool_result})
+
                 tool_history.append({
                     "iteration": iteration + 1,
                     "tool": tool_name,
@@ -1132,17 +1169,43 @@ class ExecutionEngine:
                     "result": tool_result,
                 })
 
-                # Add tool result to messages
+                # OBSERVE: format and add tool result to messages
+                raw_content = str(tool_result.get("result", tool_result.get("error", "")))
+                if observation_formatter:
+                    obs_content = observation_formatter(tool_name, tool_args, tool_result)
+                else:
+                    obs_content = raw_content
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call_id,
-                    "content": str(tool_result.get("result", tool_result.get("error", ""))),
+                    "content": obs_content,
                 })
+
+            # Record full Think-Act-Observe step
+            step = {"think": thought, "act": step_actions, "observe": step_observations}
+            steps.append(step)
+
+            if on_step:
+                await on_step(iteration + 1, step) if asyncio.iscoroutinefunction(on_step) else on_step(iteration + 1, step)
+
+            # Custom stop condition
+            if stop_condition:
+                should_stop = await stop_condition(steps, tool_history) if asyncio.iscoroutinefunction(stop_condition) else stop_condition(steps, tool_history)
+                if should_stop:
+                    logger.info(f"ExecutionEngine: agentic loop stopped by stop_condition at iteration {iteration + 1}")
+                    return {
+                        "response": thought,
+                        "tool_history": tool_history,
+                        "steps": steps,
+                        "iterations": iteration + 1,
+                    }
 
         # Max iterations reached
         logger.warning(f"ExecutionEngine: agentic loop reached max_iterations ({max_iterations})")
         return {
             "response": last_response.get("content", "") if last_response else "",
             "tool_history": tool_history,
+            "steps": steps,
             "iterations": max_iterations,
         }

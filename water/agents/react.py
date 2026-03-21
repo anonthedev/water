@@ -41,14 +41,18 @@ def create_agentic_task(
     temperature: float = 0.7,
     max_tokens: int = 1024,
     stop_tool: bool = False,
+    on_step: Optional[Callable] = None,
+    on_tool_call: Optional[Callable] = None,
+    stop_condition: Optional[Callable] = None,
+    observation_formatter: Optional[Callable] = None,
     output_parser: Optional[Callable] = None,
     retry_count: int = 0,
     timeout: Optional[float] = None,
 ):
     """Create a task that runs a model-controlled agentic loop (ReAct pattern).
 
-    The LLM decides when to continue iterating (by calling tools) and when to
-    stop (by responding without tool calls or by calling __done__).
+    The loop follows Think-Act-Observe-Repeat: the LLM reasons (Think),
+    calls tools (Act), receives results (Observe), and repeats until done.
 
     Args:
         id: Task identifier.
@@ -61,6 +65,12 @@ def create_agentic_task(
         temperature: LLM temperature.
         max_tokens: Max tokens per LLM response.
         stop_tool: If True, inject a __done__ tool for explicit stop signaling.
+        on_step: Callback(iteration, step_dict) called after each Think-Act-Observe cycle.
+        on_tool_call: Callback(tool_name, tool_args) called before tool execution.
+            Return False to reject, a dict to modify args, or None/True to proceed.
+        stop_condition: Callback(steps, tool_history) returning True to stop early.
+        observation_formatter: Callback(tool_name, tool_args, tool_result) -> str
+            to customize how tool results are fed back to the LLM.
         output_parser: Optional function to parse the final response.
         retry_count: Number of retries on failure.
         timeout: Timeout in seconds.
@@ -115,6 +125,7 @@ def create_agentic_task(
         messages.append({"role": "user", "content": user_message})
 
         tool_history = []
+        steps = []
         last_response = None
 
         for iteration in range(max_iterations):
@@ -126,15 +137,24 @@ def create_agentic_task(
             response = await provider.complete(**call_kwargs)
             last_response = response
 
+            # THINK: capture reasoning
+            thought = response.get("content", "")
             tool_calls = response.get("tool_calls", [])
 
             if not tool_calls:
-                result = {"response": response.get("content", ""), "tool_history": tool_history, "iterations": iteration + 1}
+                step = {"think": thought, "act": None, "observe": None}
+                steps.append(step)
+                if on_step:
+                    await on_step(iteration + 1, step) if asyncio.iscoroutinefunction(on_step) else on_step(iteration + 1, step)
+                result = {"response": thought, "tool_history": tool_history, "steps": steps, "iterations": iteration + 1}
                 return output_parser(result) if output_parser else result
 
-            # Process tool calls
-            assistant_msg = {"role": "assistant", "content": response.get("content", ""), "tool_calls": tool_calls}
+            # ACT: process tool calls
+            assistant_msg = {"role": "assistant", "content": thought, "tool_calls": tool_calls}
             messages.append(assistant_msg)
+
+            step_actions = []
+            step_observations = []
 
             for tc in tool_calls:
                 fn = tc.get("function", {})
@@ -143,13 +163,31 @@ def create_agentic_task(
                 tool_call_id = tc.get("id", "")
 
                 if tool_name == "__done__":
+                    step = {"think": thought, "act": [{"tool": "__done__", "arguments": tool_args}], "observe": None}
+                    steps.append(step)
+                    if on_step:
+                        await on_step(iteration + 1, step) if asyncio.iscoroutinefunction(on_step) else on_step(iteration + 1, step)
                     result = {
                         "response": tool_args.get("final_answer", ""),
                         "tool_history": tool_history,
+                        "steps": steps,
                         "iterations": iteration + 1,
                         "metadata": tool_args.get("metadata", {}),
                     }
                     return output_parser(result) if output_parser else result
+
+                # on_tool_call hook
+                if on_tool_call:
+                    decision = await on_tool_call(tool_name, tool_args) if asyncio.iscoroutinefunction(on_tool_call) else on_tool_call(tool_name, tool_args)
+                    if decision is False:
+                        tool_result = {"success": False, "error": f"Tool call '{tool_name}' rejected by on_tool_call hook"}
+                        step_actions.append({"tool": tool_name, "arguments": tool_args, "rejected": True})
+                        step_observations.append({"tool": tool_name, "result": tool_result})
+                        tool_history.append({"iteration": iteration + 1, "tool": tool_name, "arguments": tool_args, "result": tool_result})
+                        messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": tool_result["error"]})
+                        continue
+                    elif isinstance(decision, dict):
+                        tool_args = decision
 
                 if final_toolkit:
                     tool = final_toolkit.get(tool_name)
@@ -166,11 +204,31 @@ def create_agentic_task(
                 else:
                     tool_result = {"success": False, "error": "No tools available"}
 
+                step_actions.append({"tool": tool_name, "arguments": tool_args})
+                step_observations.append({"tool": tool_name, "result": tool_result})
                 tool_history.append({"iteration": iteration + 1, "tool": tool_name, "arguments": tool_args, "result": tool_result})
-                messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": str(tool_result.get("result", tool_result.get("error", "")))})
+
+                # OBSERVE: format and feed back
+                raw_content = str(tool_result.get("result", tool_result.get("error", "")))
+                obs_content = observation_formatter(tool_name, tool_args, tool_result) if observation_formatter else raw_content
+                messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": obs_content})
+
+            # Record full Think-Act-Observe step
+            step = {"think": thought, "act": step_actions, "observe": step_observations}
+            steps.append(step)
+
+            if on_step:
+                await on_step(iteration + 1, step) if asyncio.iscoroutinefunction(on_step) else on_step(iteration + 1, step)
+
+            # Custom stop condition
+            if stop_condition:
+                should_stop = await stop_condition(steps, tool_history) if asyncio.iscoroutinefunction(stop_condition) else stop_condition(steps, tool_history)
+                if should_stop:
+                    result = {"response": thought, "tool_history": tool_history, "steps": steps, "iterations": iteration + 1}
+                    return output_parser(result) if output_parser else result
 
         logger.warning(f"Agentic loop reached max_iterations ({max_iterations})")
-        result = {"response": last_response.get("content", "") if last_response else "", "tool_history": tool_history, "iterations": max_iterations}
+        result = {"response": last_response.get("content", "") if last_response else "", "tool_history": tool_history, "steps": steps, "iterations": max_iterations}
         return output_parser(result) if output_parser else result
 
     task = Task(

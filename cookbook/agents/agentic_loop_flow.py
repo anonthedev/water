@@ -379,6 +379,187 @@ async def example_max_iterations():
 
 
 # ---------------------------------------------------------------------------
+# Example 6: Think-Act-Observe trace with on_step callback
+# ---------------------------------------------------------------------------
+
+async def example_think_act_observe():
+    """
+    Demonstrates the structured Think-Act-Observe trace.
+    on_step logs each iteration, and the output includes full step history.
+    """
+    print("=== Example 6: Think-Act-Observe Trace ===\n")
+
+    call_count = 0
+
+    async def mock_complete(messages, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return {
+                "content": "I need to check the weather to answer this question.",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": {"city": "New York"},
+                    },
+                }],
+            }
+        return {
+            "content": "Based on my research, it's 75°F and sunny in New York.",
+        }
+
+    mock = MockProvider(default_response="")
+    mock.complete = mock_complete
+
+    # on_step callback: logs Think-Act-Observe for each iteration
+    def log_step(iteration, step):
+        print(f"  Step {iteration}:")
+        print(f"    Think:   {step['think']}")
+        if step["act"]:
+            for a in step["act"]:
+                print(f"    Act:     {a['tool']}({a.get('arguments', {})})")
+        if step["observe"]:
+            for o in step["observe"]:
+                status = "ok" if o["result"].get("success") else "error"
+                print(f"    Observe: [{status}] {o['result'].get('result', o['result'].get('error', ''))}")
+
+    flow = Flow(id="tao_flow", description="Think-Act-Observe demo")
+    flow.agentic_loop(
+        provider=mock,
+        tools=[weather_tool],
+        system_prompt="You are a weather assistant.",
+        prompt_template="{question}",
+        max_iterations=5,
+        on_step=log_step,
+    ).register()
+
+    result = await flow.run({"question": "What's the weather in New York?"})
+
+    print(f"\n  Final response: {result['response']}")
+    print(f"  Total steps: {len(result['steps'])}")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Example 7: on_tool_call hook to approve/reject tool execution
+# ---------------------------------------------------------------------------
+
+async def example_tool_call_gating():
+    """
+    Demonstrates on_tool_call to gate tool execution.
+    The calculator is allowed, but search is blocked.
+    """
+    print("=== Example 7: Tool Call Gating (on_tool_call) ===\n")
+
+    call_count = 0
+
+    async def mock_complete(messages, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return {
+                "content": "Let me search and calculate.",
+                "tool_calls": [
+                    {"id": "call_1", "function": {"name": "search", "arguments": {"query": "sensitive data"}}},
+                    {"id": "call_2", "function": {"name": "calculator", "arguments": {"expression": "2+2"}}},
+                ],
+            }
+        return {"content": "Calculator returned 4. Search was blocked."}
+
+    mock = MockProvider(default_response="")
+    mock.complete = mock_complete
+
+    # Gate: block search, allow calculator
+    allowed_tools = {"calculator", "get_weather"}
+
+    def gate_tool(tool_name, tool_args):
+        if tool_name not in allowed_tools:
+            print(f"  BLOCKED: {tool_name}({tool_args})")
+            return False
+        print(f"  ALLOWED: {tool_name}({tool_args})")
+        return True
+
+    flow = Flow(id="gated_flow", description="Tool gating demo")
+    flow.agentic_loop(
+        provider=mock,
+        tools=[search_tool, calc_tool],
+        system_prompt="You are an assistant.",
+        prompt_template="{prompt}",
+        max_iterations=5,
+        on_tool_call=gate_tool,
+    ).register()
+
+    result = await flow.run({"prompt": "Search and calculate"})
+
+    print(f"\n  Response: {result['response']}")
+    rejected = [s for step in result["steps"] for s in (step["act"] or []) if s.get("rejected")]
+    print(f"  Rejected tool calls: {len(rejected)}")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Example 8: Custom stop condition and observation formatter
+# ---------------------------------------------------------------------------
+
+async def example_stop_condition():
+    """
+    Demonstrates stop_condition to halt after finding a specific result,
+    and observation_formatter to customize how tool output is presented to the LLM.
+    """
+    print("=== Example 8: Custom Stop Condition & Observation Formatter ===\n")
+
+    call_count = 0
+
+    async def mock_complete(messages, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return {
+            "content": f"Searching attempt {call_count}...",
+            "tool_calls": [{
+                "id": f"call_{call_count}",
+                "function": {
+                    "name": "search",
+                    "arguments": {"query": f"attempt {call_count}"},
+                },
+            }],
+        }
+
+    mock = MockProvider(default_response="")
+    mock.complete = mock_complete
+
+    # Stop after 2 successful tool calls
+    def stop_after_two(steps, tool_history):
+        successful = [t for t in tool_history if t["result"].get("success")]
+        return len(successful) >= 2
+
+    # Format observations with a prefix
+    def format_obs(tool_name, tool_args, tool_result):
+        if tool_result.get("success"):
+            return f"[OBSERVATION from {tool_name}]: {tool_result['result']}"
+        return f"[ERROR from {tool_name}]: {tool_result.get('error')}"
+
+    flow = Flow(id="stop_cond_flow", description="Stop condition demo")
+    flow.agentic_loop(
+        provider=mock,
+        tools=[search_tool],
+        system_prompt="You are a research assistant.",
+        prompt_template="{prompt}",
+        max_iterations=10,
+        stop_condition=stop_after_two,
+        observation_formatter=format_obs,
+    ).register()
+
+    result = await flow.run({"prompt": "Keep searching"})
+
+    print(f"  Iterations: {result['iterations']} (stopped by condition, max was 10)")
+    print(f"  Steps recorded: {len(result['steps'])}")
+    for i, step in enumerate(result["steps"]):
+        print(f"    Step {i+1} think: {step['think']}")
+    print()
+
+
+# ---------------------------------------------------------------------------
 # Run all examples
 # ---------------------------------------------------------------------------
 
@@ -388,6 +569,9 @@ async def main():
     await example_stop_tool()
     await example_standalone_task()
     await example_max_iterations()
+    await example_think_act_observe()
+    await example_tool_call_gating()
+    await example_stop_condition()
     print("All agentic loop examples completed successfully!")
 
 

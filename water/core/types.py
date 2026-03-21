@@ -14,6 +14,7 @@ __all__ = [
     "BranchCondition",
     "BranchNode",
     "LoopNode",
+    "AgenticLoopNode",
     "ExecutionNode",
     "ExecutionGraph",
 ]
@@ -79,6 +80,15 @@ class LoopNode(TypedDict):
     task: 'Task'
     max_iterations: int
 
+class AgenticLoopNode(TypedDict):
+    """Node where the LLM controls the iteration loop (ReAct pattern)."""
+    type: str           # "agentic_loop"
+    provider: Any       # LLMProvider instance
+    tools: Any          # Toolkit or List[Tool]
+    system_prompt: str  # System prompt for the agent
+    max_iterations: int # Safety limit (default 10)
+    config: Dict[str, Any]  # prompt_template, temperature, etc.
+
 # Union type for all node types
-ExecutionNode = Union[SequentialNode, ParallelNode, BranchNode, LoopNode]
+ExecutionNode = Union[SequentialNode, ParallelNode, BranchNode, LoopNode, AgenticLoopNode]
 ExecutionGraph = List[ExecutionNode]

@@ -126,6 +126,7 @@ from water.agents import (
     ExecutionPlan,
     PlanStep,
     create_planner_task,
+    create_agentic_task,
 )
 
 # --- Integrations ---
@@ -361,6 +362,7 @@ __all__ = [
     "ExecutionPlan",
     "PlanStep",
     "create_planner_task",
+    "create_agentic_task",
     # Integrations
     "MCPServer",
     "MCPClient",

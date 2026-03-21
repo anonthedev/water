@@ -78,3 +78,6 @@ from water.agents.planner import (
     PlanStep,
     create_planner_task,
 )
+from water.agents.react import (
+    create_agentic_task,
+)

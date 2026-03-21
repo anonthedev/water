@@ -1,7 +1,10 @@
+import logging
 import uuid
 from typing import Dict, Any, Optional, Type, Callable, List
 from pydantic import BaseModel
 from water.core.task import Task
+
+logger = logging.getLogger(__name__)
 
 
 class SubFlow:
@@ -78,6 +81,13 @@ class SubFlow:
                 if hasattr(task, 'input_schema'):
                     return task.input_schema
         # Generic fallback
+        logger.warning(
+            "SubFlow '%s': could not infer input schema from flow '%s'; "
+            "falling back to generic SubFlowInput schema. Define an input_schema "
+            "on the first task to avoid this.",
+            self._id or "unnamed",
+            self.flow.id,
+        )
         return type("SubFlowInput", (BaseModel,), {"__annotations__": {"data": Dict[str, Any]}})
 
     def _get_output_schema(self) -> Type[BaseModel]:
@@ -91,6 +101,13 @@ class SubFlow:
                 task = last_node['task']
                 if hasattr(task, 'output_schema'):
                     return task.output_schema
+        logger.warning(
+            "SubFlow '%s': could not infer output schema from flow '%s'; "
+            "falling back to generic SubFlowOutput schema. Define an output_schema "
+            "on the last task to avoid this.",
+            self._id or "unnamed",
+            self.flow.id,
+        )
         return type("SubFlowOutput", (BaseModel,), {"__annotations__": {"result": Dict[str, Any]}})
 
 

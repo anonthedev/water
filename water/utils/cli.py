@@ -480,6 +480,40 @@ def main():
         help="Custom start command (overrides auto-detected)",
     )
 
+    # water flow prod:railway
+    railway_parser = flow_subparsers.add_parser(
+        "prod:railway",
+        help="Deploy flows to Railway",
+    )
+    railway_parser.add_argument("--app", help="Python module containing FlowServer app")
+    railway_parser.add_argument("--var", default="app", help="Variable name of the ASGI app")
+    railway_parser.add_argument("--start-command", help="Custom start command")
+    railway_parser.add_argument("--config-only", action="store_true", help="Generate config only, no deploy")
+
+    # water flow prod:fly
+    fly_parser = flow_subparsers.add_parser(
+        "prod:fly",
+        help="Deploy flows to Fly.io",
+    )
+    fly_parser.add_argument("--app", help="Python module containing FlowServer app")
+    fly_parser.add_argument("--var", default="app", help="Variable name of the ASGI app")
+    fly_parser.add_argument("--name", help="Fly.io app name")
+    fly_parser.add_argument("--region", default="iad", help="Fly.io region (default: iad)")
+    fly_parser.add_argument("--start-command", help="Custom start command")
+    fly_parser.add_argument("--config-only", action="store_true", help="Generate config only, no deploy")
+
+    # water flow prod:docker
+    docker_parser = flow_subparsers.add_parser(
+        "prod:docker",
+        help="Generate Dockerfile + docker-compose.yml",
+    )
+    docker_parser.add_argument("--app", help="Python module containing FlowServer app")
+    docker_parser.add_argument("--var", default="app", help="Variable name of the ASGI app")
+    docker_parser.add_argument("--start-command", help="Custom start command")
+    docker_parser.add_argument("--redis", action="store_true", help="Include Redis in docker-compose")
+    docker_parser.add_argument("--postgres", action="store_true", help="Include PostgreSQL in docker-compose")
+    docker_parser.add_argument("--config-only", action="store_true", help="Generate config only")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -497,6 +531,15 @@ def main():
     elif args.command == "flow":
         if args.flow_command == "prod:render":
             cmd_flow_prod_render(args)
+        elif args.flow_command == "prod:railway":
+            from water.utils.deploy.railway import cmd_flow_prod_railway
+            cmd_flow_prod_railway(args)
+        elif args.flow_command == "prod:fly":
+            from water.utils.deploy.fly import cmd_flow_prod_fly
+            cmd_flow_prod_fly(args)
+        elif args.flow_command == "prod:docker":
+            from water.utils.deploy.docker import cmd_flow_prod_docker
+            cmd_flow_prod_docker(args)
         else:
             flow_parser.print_help()
             sys.exit(0)

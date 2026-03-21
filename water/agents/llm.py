@@ -1,3 +1,18 @@
+
+
+
+__all__ = [
+    "AgentInput",
+    "AgentOutput",
+    "LLMProvider",
+    "MockProvider",
+    "OpenAIProvider",
+    "AnthropicProvider",
+    "CustomProvider",
+    "create_agent_task",
+]
+
+
 """
 LLM-Native Agent Tasks for Water.
 
@@ -6,6 +21,7 @@ alongside regular Python tasks. Includes provider abstractions for
 OpenAI, Anthropic, custom callables, and a mock provider for testing.
 """
 
+import logging
 import os
 import uuid
 from abc import ABC, abstractmethod
@@ -14,6 +30,34 @@ from typing import Any, Callable, Dict, List, Optional, Type
 from pydantic import BaseModel
 
 from water.core.task import Task
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Token estimation
+# ---------------------------------------------------------------------------
+
+_DEFAULT_CHARS_PER_TOKEN = 4
+
+
+def estimate_token_count(text: str, chars_per_token: float = _DEFAULT_CHARS_PER_TOKEN) -> int:
+    """
+    Estimate the number of tokens in *text* using a simple heuristic.
+
+    Uses ``len(text) / chars_per_token`` (default 4 chars per token).
+    This is a rough approximation; for exact counts use a proper
+    tokeniser such as ``tiktoken``.
+
+    Args:
+        text: The input text to estimate.
+        chars_per_token: Average characters per token.
+
+    Returns:
+        Estimated token count (at least 1 for non-empty text, 0 for empty).
+    """
+    if not text:
+        return 0
+    return max(1, int(len(text) / chars_per_token))
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +183,7 @@ class AnthropicProvider(LLMProvider):
     async def complete(self, messages: List[Dict[str, str]], **kwargs) -> dict:
         try:
             import anthropic  # lazy import
+
         except ImportError:
             raise ImportError(
                 f"AnthropicProvider: the 'anthropic' package is required. "
@@ -338,21 +383,29 @@ def create_agent_task(
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_content})
 
-        # 3. Call the provider
+        # 3. Estimate tokens and log before calling the provider
+        total_input_text = "".join(m["content"] for m in messages)
+        estimated_tokens = estimate_token_count(total_input_text)
+        logger.info(
+            "LLM call [%s]: estimated input tokens ~%d (from %d chars)",
+            task_id, estimated_tokens, len(total_input_text),
+        )
+
+        # 4. Call the provider
         extra_kwargs: Dict[str, Any] = {}
         if tools:
             extra_kwargs["tools"] = tools
         response = await llm_provider.complete(messages, **extra_kwargs)
         response_text = response.get("text", "")
 
-        # 4. Parse response
+        # 5. Parse response
         if output_parser:
             parsed = output_parser(response_text)
             if isinstance(parsed, dict):
                 return parsed
             return {"response": parsed}
 
-        # 5. Default: merge response with input data
+        # 6. Default: merge response with input data
         return {"response": response_text, **input_data}
 
     return Task(

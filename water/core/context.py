@@ -1,9 +1,13 @@
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Type, TypeVar, overload
 from datetime import datetime, timezone
 import copy
 import uuid
 
 from water.core.types import OutputData
+
+
+_T = TypeVar("_T")
+
 
 class ExecutionContext:
     """
@@ -54,7 +58,7 @@ class ExecutionContext:
         # Dependency injection services
         self._services: Dict[str, Any] = {}
 
-    def register_service(self, name: str, service: Any) -> None:
+    def register_service(self, name: str, service: _T) -> None:
         """
         Register a shared service for dependency injection.
 
@@ -64,22 +68,43 @@ class ExecutionContext:
         """
         self._services[name] = service
 
-    def get_service(self, name: str) -> Any:
+    @overload
+    def get_service(self, name: str, service_type: Type[_T]) -> _T: ...
+
+    @overload
+    def get_service(self, name: str) -> Any: ...
+
+    def get_service(self, name: str, service_type: Optional[Type[_T]] = None) -> Any:
         """
-        Retrieve a registered service by name.
+        Retrieve a registered service by name with optional type safety.
+
+        When *service_type* is provided the return value is typed as that
+        class and a runtime ``TypeError`` is raised if the stored service
+        is not an instance of the requested type.
 
         Args:
             name: Name of the service to retrieve
+            service_type: Optional type for the returned service, enabling
+                type-safe retrieval.
 
         Returns:
-            The registered service instance
+            The registered service instance (typed as *service_type* when
+            provided, ``Any`` otherwise).
 
         Raises:
             KeyError: If no service is registered with the given name
+            TypeError: If *service_type* is provided and the service is not
+                an instance of that type
         """
         if name not in self._services:
             raise KeyError(f"Service '{name}' not found. Available services: {list(self._services.keys())}")
-        return self._services[name]
+        service = self._services[name]
+        if service_type is not None and not isinstance(service, service_type):
+            raise TypeError(
+                f"Service '{name}' is of type {type(service).__name__}, "
+                f"expected {service_type.__name__}"
+            )
+        return service
 
     def has_service(self, name: str) -> bool:
         """

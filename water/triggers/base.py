@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, Optional, Callable, List
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -29,7 +29,7 @@ class TriggerEvent:
         if not self.trigger_id:
             self.trigger_id = uuid.uuid4().hex[:12]
         if not self.timestamp:
-            self.timestamp = datetime.utcnow().isoformat()
+            self.timestamp = datetime.now(timezone.utc).isoformat()
 
 
 class Trigger(ABC):
@@ -90,7 +90,7 @@ class Trigger(ABC):
         """
         return TriggerEvent(
             source=self.__class__.__name__,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             payload=self.transform_payload(payload),
             metadata=metadata,
         )

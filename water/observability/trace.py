@@ -7,7 +7,7 @@ for visual debugging and performance analysis.
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 
@@ -161,7 +161,7 @@ class TraceCollector:
                 trace_id=f"trace_{uuid.uuid4().hex[:12]}",
                 flow_id=flow_id,
                 execution_id=exec_id,
-                started_at=datetime.utcnow().isoformat(),
+                started_at=datetime.now(timezone.utc).isoformat(),
                 input_data=getattr(context, "initial_input", None),
             )
             self._active_traces[exec_id] = trace
@@ -174,7 +174,7 @@ class TraceCollector:
             flow_id=flow_id,
             execution_id=exec_id,
             input_data=data,
-            started_at=datetime.utcnow().isoformat(),
+            started_at=datetime.now(timezone.utc).isoformat(),
             retry_attempt=getattr(context, "attempt_number", 1),
         )
         trace.spans.append(span)
@@ -192,7 +192,7 @@ class TraceCollector:
                 if span.task_id == task_id and span.status == "running":
                     span.status = "completed"
                     span.output_data = result
-                    span.completed_at = datetime.utcnow().isoformat()
+                    span.completed_at = datetime.now(timezone.utc).isoformat()
                     if span.started_at:
                         start = datetime.fromisoformat(span.started_at)
                         end = datetime.fromisoformat(span.completed_at)
@@ -206,7 +206,7 @@ class TraceCollector:
         """Mark a trace as completed or failed."""
         trace = self._active_traces.pop(execution_id, None)
         if trace:
-            trace.completed_at = datetime.utcnow().isoformat()
+            trace.completed_at = datetime.now(timezone.utc).isoformat()
             if trace.started_at:
                 start = datetime.fromisoformat(trace.started_at)
                 end = datetime.fromisoformat(trace.completed_at)

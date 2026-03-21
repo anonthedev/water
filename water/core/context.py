@@ -1,5 +1,5 @@
 from typing import Any, Dict, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from water.core.types import OutputData
@@ -43,8 +43,8 @@ class ExecutionContext:
         self.initial_input = input_data or {}
 
         # Timing information
-        self.execution_start_time = datetime.utcnow()
-        self.step_start_time = datetime.utcnow()
+        self.execution_start_time = datetime.now(timezone.utc)
+        self.step_start_time = datetime.now(timezone.utc)
 
         # Task outputs history
         self._task_outputs: Dict[str, OutputData] = {}
@@ -106,7 +106,7 @@ class ExecutionContext:
             "step_number": self.step_number,
             "task_id": task_id,
             "output": output,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "attempt_number": self.attempt_number
         }
         self._step_history.append(step_info)

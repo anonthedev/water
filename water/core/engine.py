@@ -3,7 +3,7 @@ import asyncio
 import logging
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from water.core.types import (
     ExecutionGraph,
@@ -294,7 +294,7 @@ class ExecutionEngine:
 
         # Update context with current task info
         context.task_id = task.id
-        context.step_start_time = datetime.utcnow()
+        context.step_start_time = datetime.now(timezone.utc)
         context.step_number += 1
 
         retry_count = getattr(task, "retry_count", 0)
@@ -338,7 +338,7 @@ class ExecutionEngine:
                     node_index=node_index,
                     status="running",
                     input_data=data,
-                    started_at=datetime.utcnow(),
+                    started_at=datetime.now(timezone.utc),
                 )
                 await storage.save_task_run(task_run)
 
@@ -406,7 +406,7 @@ class ExecutionEngine:
                 if storage and task_run:
                     task_run.status = "completed"
                     task_run.output_data = result
-                    task_run.completed_at = datetime.utcnow()
+                    task_run.completed_at = datetime.now(timezone.utc)
                     await storage.save_task_run(task_run)
 
                 # Emit task complete hook and event
@@ -441,7 +441,7 @@ class ExecutionEngine:
                 if storage and task_run:
                     task_run.status = "failed"
                     task_run.error = str(e)
-                    task_run.completed_at = datetime.utcnow()
+                    task_run.completed_at = datetime.now(timezone.utc)
                     await storage.save_task_run(task_run)
 
                 if attempt < max_attempts:

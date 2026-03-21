@@ -150,7 +150,15 @@ from water.guardrails import (
 )
 
 # --- Observability ---
-from water.observability import FlowDashboard, TelemetryManager, is_otel_available
+from water.observability import (
+    FlowDashboard,
+    TelemetryManager,
+    is_otel_available,
+    TraceCollector,
+    TraceStore,
+    Trace,
+    TraceSpan,
+)
 
 # --- Server ---
 from water.server import FlowServer
@@ -294,6 +302,10 @@ __all__ = [
     "FlowDashboard",
     "TelemetryManager",
     "is_otel_available",
+    "TraceCollector",
+    "TraceStore",
+    "Trace",
+    "TraceSpan",
     # Server
     "FlowServer",
     # Utils

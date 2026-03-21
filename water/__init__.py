@@ -104,6 +104,15 @@ from water.integrations import (
     StreamManager,
     StreamingFlow,
     add_streaming_routes,
+    A2AServer,
+    A2AClient,
+    A2ATask,
+    A2AMessage,
+    AgentCard,
+    AgentSkill,
+    MessagePart,
+    A2ATaskState,
+    create_a2a_task,
 )
 
 # --- Observability ---
@@ -208,6 +217,16 @@ __all__ = [
     "StreamManager",
     "StreamingFlow",
     "add_streaming_routes",
+    # A2A Protocol
+    "A2AServer",
+    "A2AClient",
+    "A2ATask",
+    "A2AMessage",
+    "AgentCard",
+    "AgentSkill",
+    "MessagePart",
+    "A2ATaskState",
+    "create_a2a_task",
     # Observability
     "FlowDashboard",
     "TelemetryManager",

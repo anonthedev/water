@@ -15,3 +15,14 @@ from water.integrations.streaming import (
     StreamingFlow,
     add_streaming_routes,
 )
+from water.integrations.a2a import (
+    A2AServer,
+    A2AClient,
+    A2ATask,
+    A2AMessage,
+    AgentCard,
+    AgentSkill,
+    MessagePart,
+    TaskState as A2ATaskState,
+    create_a2a_task,
+)

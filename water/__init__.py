@@ -115,6 +115,18 @@ from water.integrations import (
     create_a2a_task,
 )
 
+# --- Guardrails ---
+from water.guardrails import (
+    Guardrail,
+    GuardrailResult,
+    GuardrailViolation,
+    GuardrailChain,
+    ContentFilter,
+    SchemaGuardrail,
+    CostGuardrail,
+    TopicGuardrail,
+)
+
 # --- Observability ---
 from water.observability import FlowDashboard, TelemetryManager, is_otel_available
 
@@ -227,6 +239,15 @@ __all__ = [
     "MessagePart",
     "A2ATaskState",
     "create_a2a_task",
+    # Guardrails
+    "Guardrail",
+    "GuardrailResult",
+    "GuardrailViolation",
+    "GuardrailChain",
+    "ContentFilter",
+    "SchemaGuardrail",
+    "CostGuardrail",
+    "TopicGuardrail",
     # Observability
     "FlowDashboard",
     "TelemetryManager",

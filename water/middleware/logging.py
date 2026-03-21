@@ -15,7 +15,8 @@ class LoggingMiddleware(Middleware):
     Does **not** modify the data — purely observational.
     """
 
-    def __init__(self, logger_instance: Optional[logging.Logger] = None) -> None:
+    def __init__(self, logger_instance: Optional[logging.Logger] = None, order: int = 0) -> None:
+        super().__init__(order=order)
         self._logger = logger_instance or logger
 
     async def before_task(self, task_id: str, data: dict, context: Any) -> dict:

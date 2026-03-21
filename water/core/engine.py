@@ -28,6 +28,7 @@ class NodeType(Enum):
     MAP = "map"
     DAG = "dag"
     TRY_CATCH = "try_catch"
+    AGENTIC_LOOP = "agentic_loop"
 
 
 class FlowPausedError(Exception):
@@ -248,6 +249,7 @@ class ExecutionEngine:
             NodeType.MAP: ExecutionEngine._execute_map,
             NodeType.DAG: ExecutionEngine._execute_dag,
             NodeType.TRY_CATCH: ExecutionEngine._execute_try_catch,
+            NodeType.AGENTIC_LOOP: ExecutionEngine._execute_agentic_loop,
         }
 
         handler = handlers.get(node_type)
@@ -366,7 +368,7 @@ class ExecutionEngine:
 
                 # --- Middleware before_task ---
                 if middleware:
-                    for mw in middleware:
+                    for mw in sorted(middleware, key=lambda m: getattr(m, 'order', 0)):
                         data = await mw.before_task(task.id, data, context)
                     params = {"input_data": data}
 
@@ -389,7 +391,7 @@ class ExecutionEngine:
 
                 # --- Middleware after_task ---
                 if middleware:
-                    for mw in middleware:
+                    for mw in sorted(middleware, key=lambda m: getattr(m, 'order', 0), reverse=True):
                         result = await mw.after_task(task.id, data, result, context)
 
                 # Validate output against schema if enabled
@@ -902,3 +904,173 @@ class ExecutionEngine:
             raise caught_error
 
         return result
+
+    @staticmethod
+    async def _execute_agentic_loop(
+        node,
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
+        hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
+    ) -> OutputData:
+        """Execute a model-controlled agentic loop (ReAct pattern).
+
+        The LLM decides when to stop by either:
+        1. Returning a response with no tool calls
+        2. Calling the special __done__ tool
+        """
+        from water.agents.tools import Toolkit, Tool
+
+        provider = node.get("provider")
+        tools = node.get("tools")
+        system_prompt = node.get("system_prompt", "")
+        max_iterations = node.get("max_iterations", 10)
+        config = node.get("config", {})
+
+        if max_iterations <= 0:
+            raise ValueError(f"ExecutionEngine: max_iterations must be > 0, got {max_iterations}")
+
+        # Build toolkit
+        toolkit = None
+        tools_schema = None
+        if tools:
+            if isinstance(tools, Toolkit):
+                toolkit = tools
+            elif isinstance(tools, list):
+                toolkit = Toolkit(tools=tools)
+            tools_schema = toolkit.to_openai_tools()
+
+        # Build initial messages
+        prompt_template = config.get("prompt_template", "")
+        if prompt_template:
+            try:
+                user_message = prompt_template.format(**data) if isinstance(data, dict) else prompt_template.format(input=data)
+            except (KeyError, IndexError):
+                user_message = str(data)
+        else:
+            user_message = data.get("prompt", str(data)) if isinstance(data, dict) else str(data)
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_message})
+
+        tool_history = []
+        last_response = None
+
+        for iteration in range(max_iterations):
+            # Check for pause/stop signals during loops
+            if storage:
+                from water.storage import FlowStatus
+                session = await storage.get_session(context.execution_id)
+                if session and session.status == FlowStatus.PAUSED:
+                    session.current_node_index = node_index
+                    session.current_data = data
+                    session.context_state = {
+                        "task_outputs": context._task_outputs,
+                        "step_history": context._step_history,
+                        "step_number": context.step_number,
+                    }
+                    await storage.save_session(session)
+                    raise FlowPausedError(
+                        f"Flow paused during agentic loop at node {node_index}, "
+                        f"iteration {iteration}"
+                    )
+                elif session and session.status == FlowStatus.STOPPED:
+                    session.current_node_index = node_index
+                    session.current_data = data
+                    session.context_state = {
+                        "task_outputs": context._task_outputs,
+                        "step_history": context._step_history,
+                        "step_number": context.step_number,
+                    }
+                    await storage.save_session(session)
+                    raise FlowStoppedError(
+                        f"Flow stopped during agentic loop at node {node_index}, "
+                        f"iteration {iteration}"
+                    )
+
+            # Call LLM
+            call_kwargs = {"messages": messages}
+            if tools_schema:
+                call_kwargs["tools"] = tools_schema
+            if config.get("temperature") is not None:
+                call_kwargs["temperature"] = config["temperature"]
+            if config.get("max_tokens") is not None:
+                call_kwargs["max_tokens"] = config["max_tokens"]
+
+            response = await provider.complete(**call_kwargs)
+            last_response = response
+
+            # Check for tool calls
+            tool_calls = response.get("tool_calls", [])
+
+            if not tool_calls:
+                # LLM is done - no more tool calls
+                return {
+                    "response": response.get("content", ""),
+                    "tool_history": tool_history,
+                    "iterations": iteration + 1,
+                }
+
+            # Process tool calls
+            assistant_message = {"role": "assistant", "content": response.get("content", ""), "tool_calls": tool_calls}
+            messages.append(assistant_message)
+
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("function", {}).get("name", "")
+                tool_args = tool_call.get("function", {}).get("arguments", {})
+                tool_call_id = tool_call.get("id", "")
+
+                # Check for __done__ signal
+                if tool_name == "__done__":
+                    return {
+                        "response": tool_args.get("final_answer", ""),
+                        "tool_history": tool_history,
+                        "iterations": iteration + 1,
+                        "metadata": tool_args.get("metadata", {}),
+                    }
+
+                # Execute tool
+                if toolkit:
+                    tool = toolkit._tools.get(tool_name)
+                    if tool:
+                        try:
+                            if isinstance(tool_args, str):
+                                import json
+                                tool_args = json.loads(tool_args)
+                            result = tool.execute(**tool_args) if not asyncio.iscoroutinefunction(tool.execute) else await tool.execute(**tool_args)
+                            tool_result = {"success": True, "result": result}
+                        except Exception as e:
+                            tool_result = {"success": False, "error": str(e)}
+                    else:
+                        tool_result = {"success": False, "error": f"Tool '{tool_name}' not found"}
+                else:
+                    tool_result = {"success": False, "error": "No tools available"}
+
+                tool_history.append({
+                    "iteration": iteration + 1,
+                    "tool": tool_name,
+                    "arguments": tool_args,
+                    "result": tool_result,
+                })
+
+                # Add tool result to messages
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": str(tool_result.get("result", tool_result.get("error", ""))),
+                })
+
+        # Max iterations reached
+        logger.warning(f"ExecutionEngine: agentic loop reached max_iterations ({max_iterations})")
+        return {
+            "response": last_response.get("content", "") if last_response else "",
+            "tool_history": tool_history,
+            "iterations": max_iterations,
+        }

@@ -19,7 +19,9 @@ class TransformMiddleware(Middleware):
         self,
         before_fn: Optional[Callable] = None,
         after_fn: Optional[Callable] = None,
+        order: int = 0,
     ) -> None:
+        super().__init__(order=order)
         self._before_fn = before_fn
         self._after_fn = after_fn
 

@@ -65,11 +65,15 @@ async def simple_agent_example():
         default_response="Water is a lightweight Python workflow framework."
     )
 
+    class TopicInput(BaseModel):
+        topic: str
+
     agent = create_agent_task(
         id="explainer",
         description="Explains a topic",
         prompt_template="Explain {topic} in one sentence.",
         provider_instance=mock,
+        input_schema=TopicInput,
     )
 
     flow = Flow(id="explain_flow", description="Simple explanation flow")
@@ -101,12 +105,22 @@ async def structured_output_example():
             "estimated_hours": data["estimated_hours"],
         }
 
+    class FeatureInput(BaseModel):
+        feature: str
+
+    class PlanParserOutput(BaseModel):
+        plan: str
+        steps: list
+        estimated_hours: int
+
     planner = create_agent_task(
         id="planner",
         description="Creates an implementation plan",
         prompt_template="Create a plan to implement: {feature}",
         provider_instance=mock,
         output_parser=parse_plan,
+        input_schema=FeatureInput,
+        output_schema=PlanParserOutput,
     )
 
     flow = Flow(id="plan_flow", description="Structured planning flow")
@@ -128,11 +142,15 @@ async def chained_example():
 
     mock = MockProvider(default_response="Use async/await for concurrency.")
 
+    class TopicInput(BaseModel):
+        topic: str
+
     agent = create_agent_task(
         id="advisor",
         description="Gives coding advice",
         prompt_template="What is the best practice for {topic}?",
         provider_instance=mock,
+        input_schema=TopicInput,
     )
 
     class AdviceInput(BaseModel):
@@ -247,6 +265,8 @@ async def multi_agent_example():
         prompt_template="Review this code:\n{code}",
         system_prompt="You are a meticulous code reviewer.",
         provider_instance=reviewer_mock,
+        input_schema=CodeBridge,
+        output_schema=ReviewOutput,
     )
 
     # Final: assemble the report

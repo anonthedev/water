@@ -133,14 +133,14 @@ async def agent_task_demo():
     provider = MockProvider(responses=["This is a concise summary of the article."])
 
     summarize = create_agent_task(
-        name="summarize",
-        provider=provider,
+        id="summarize",
+        provider_instance=provider,
         system_prompt="You are a summarization assistant.",
         prompt_template=prompt_text,   # the rendered prompt used as the template
     )
 
     flow = Flow("summarize_flow")
-    flow.add_task(summarize)
+    flow.then(summarize).register()
 
     result = await flow.run({"prompt": prompt_text})
     print(f"Agent response: {result.get('response', result)}")

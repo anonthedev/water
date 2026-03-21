@@ -68,6 +68,7 @@ async def simple_streaming_example():
         prompt_template="Explain {topic} in one sentence.",
         provider_instance=mock,
         on_chunk=on_chunk,
+        input_schema=TopicInput,
     )
 
     result = await task.execute({"input_data": {"topic": "the Water framework"}}, None)
@@ -152,6 +153,7 @@ async def multi_stream_example():
         prompt_template="Draft a plan for: {topic}",
         provider_instance=drafter,
         on_chunk=lambda c: draft_tokens.append(c.delta),
+        input_schema=TopicInput,
     )
 
     class DraftOutput(BaseModel):

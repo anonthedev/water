@@ -32,7 +32,8 @@ class SummaryOutput(BaseModel):
 # --- Define tasks ---
 
 async def analyze(params, context):
-    text = params["text"]
+    data = params["input_data"]
+    text = data["text"]
     return {
         "text": text,
         "sentiment": 0.85,
@@ -40,7 +41,8 @@ async def analyze(params, context):
     }
 
 async def summarize(params, context):
-    return {"summary": f"Positive text ({params['sentiment']:.0%}): {params['text'][:50]}..."}
+    data = params["input_data"]
+    return {"summary": f"Positive text ({data['sentiment']:.0%}): {data['text'][:50]}..."}
 
 
 analyze_task = create_task(

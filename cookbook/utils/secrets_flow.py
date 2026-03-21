@@ -39,13 +39,8 @@ class FinalOutput(BaseModel):
 # Tasks
 # ---------------------------------------------------------------------------
 
-@create_task(
-    id="call_external_api",
-    description="Call an external API using a secret API key",
-    input_schema=QueryInput,
-    output_schema=APIResponse,
-)
-async def call_external_api(input_data, context):
+async def _call_external_api(params, context):
+    input_data = params["input_data"]
     secrets = context.get_service("secrets")
     api_key = secrets.reveal("external_api_key")
 
@@ -66,13 +61,17 @@ async def call_external_api(input_data, context):
     }
 
 
-@create_task(
-    id="summarize",
-    description="Summarize the API response using a second service",
-    input_schema=APIResponse,
-    output_schema=FinalOutput,
+call_external_api = create_task(
+    id="call_external_api",
+    description="Call an external API using a secret API key",
+    input_schema=QueryInput,
+    output_schema=APIResponse,
+    execute=_call_external_api,
 )
-async def summarize(input_data, context):
+
+
+async def _summarize(params, context):
+    input_data = params["input_data"]
     secrets = context.get_service("secrets")
     llm_key = secrets.reveal("llm_api_key")
 
@@ -84,6 +83,15 @@ async def summarize(input_data, context):
         **input_data,
         "summary": f"Summary of: {input_data['answer']}",
     }
+
+
+summarize = create_task(
+    id="summarize",
+    description="Summarize the API response using a second service",
+    input_schema=APIResponse,
+    output_schema=FinalOutput,
+    execute=_summarize,
+)
 
 
 # ---------------------------------------------------------------------------

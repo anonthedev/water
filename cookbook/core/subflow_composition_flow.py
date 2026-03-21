@@ -123,8 +123,10 @@ def example_mapping():
         output_mapping={"content": "text"},
     )
 
+    sub_task = sub.as_task()
+    sub_task.validate_schema = False  # mapping transforms keys before inner flow
     pipeline = Flow(id="pipeline_mapped")
-    pipeline.then(sub.as_task())
+    pipeline.then(sub_task)
     pipeline.register()
 
     return pipeline

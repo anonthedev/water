@@ -31,11 +31,11 @@ async def example_json_transform():
         Flow("transform-pipeline")
         .then(json_transform(
             id="extract",
-            mapping={"user_name": "profile.name", "user_email": "profile.email"},
+            expression="profile",
         ))
         .then(map_fields(
             id="rename",
-            field_mapping={"user_name": "name", "user_email": "email"},
+            field_map={"user_name": "name", "user_email": "email"},
         ))
         .register()
     )
@@ -52,7 +52,7 @@ async def example_filter_fields():
 
     flow = (
         Flow("filter-pipeline")
-        .then(filter_fields(id="keep-essentials", include_fields=["name", "email"]))
+        .then(filter_fields(id="keep-essentials", include=["name", "email"]))
         .register()
     )
 

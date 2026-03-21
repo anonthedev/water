@@ -10,6 +10,9 @@ Usage:
 """
 
 import asyncio
+from typing import Any, Dict
+
+from pydantic import BaseModel
 
 from water import Flow, Task, create_task
 from water.triggers import (
@@ -20,6 +23,16 @@ from water.triggers import (
 )
 
 
+class EventInput(BaseModel):
+    source: str = ""
+
+class EventOutput(BaseModel):
+    status: str = ""
+    source: str = ""
+    enriched: bool = False
+    processed_by: str = ""
+
+
 # ---------------------------------------------------------------------------
 # 1. Define a simple processing flow
 # ---------------------------------------------------------------------------
@@ -27,23 +40,41 @@ from water.triggers import (
 process_flow = Flow(id="process-event", description="Processes incoming events")
 
 
-@create_task(id="log-event", description="Logs the incoming event data")
-async def log_event(input_data):
+async def _log_event(params, context):
+    input_data = params["input_data"]
     print(f"  [log-event] Received: {input_data}")
     return {"status": "logged", **input_data}
 
 
-@create_task(id="enrich-event", description="Enriches event with metadata")
-async def enrich_event(input_data):
+log_event = create_task(
+    id="log-event",
+    description="Logs the incoming event data",
+    input_schema=EventInput,
+    output_schema=EventOutput,
+    execute=_log_event,
+    validate_schema=False,
+)
+
+
+async def _enrich_event(params, context):
+    input_data = params["input_data"]
     input_data["enriched"] = True
     input_data["processed_by"] = "water-triggers"
     print(f"  [enrich-event] Enriched: {input_data}")
     return input_data
 
 
-process_flow.add_task(log_event)
-process_flow.add_task(enrich_event)
-process_flow.register()
+enrich_event = create_task(
+    id="enrich-event",
+    description="Enriches event with metadata",
+    input_schema=EventOutput,
+    output_schema=EventOutput,
+    execute=_enrich_event,
+    validate_schema=False,
+)
+
+
+process_flow.then(log_event).then(enrich_event).register()
 
 
 # ---------------------------------------------------------------------------

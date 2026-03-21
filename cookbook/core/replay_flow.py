@@ -89,7 +89,7 @@ def build_pipeline() -> Flow:
     t_load = create_task(
         id="load",
         description="Store data in warehouse",
-        input_schema=LoadedData,
+        input_schema=TransformedData,
         output_schema=LoadedData,
         execute=load,
     )

@@ -61,28 +61,36 @@ class ReputationAPIClient:
 # Tasks
 # ---------------------------------------------------------------------------
 
-@create_task(
-    id="fetch_user",
-    description="Load user profile from the database",
-    input_schema=UserInput,
-    output_schema=UserProfile,
-)
-async def fetch_user(input_data, context):
+async def _fetch_user(params, context):
+    input_data = params["input_data"]
     db = context.get_service("db")
     profile = await db.fetch_user(input_data["user_id"])
     return profile
 
 
-@create_task(
+fetch_user = create_task(
+    id="fetch_user",
+    description="Load user profile from the database",
+    input_schema=UserInput,
+    output_schema=UserProfile,
+    execute=_fetch_user,
+)
+
+
+async def _enrich_profile(params, context):
+    input_data = params["input_data"]
+    api = context.get_service("reputation_api")
+    score = await api.get_score(input_data["user_id"])
+    return {**input_data, "reputation_score": score}
+
+
+enrich_profile = create_task(
     id="enrich_profile",
     description="Augment profile with a reputation score from an external API",
     input_schema=UserProfile,
     output_schema=EnrichedProfile,
+    execute=_enrich_profile,
 )
-async def enrich_profile(input_data, context):
-    api = context.get_service("reputation_api")
-    score = await api.get_score(input_data["user_id"])
-    return {**input_data, "reputation_score": score}
 
 
 # ---------------------------------------------------------------------------

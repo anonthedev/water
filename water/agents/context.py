@@ -178,7 +178,15 @@ class ContextManager:
         if self.summarize_fn:
             summary_text = await self.summarize_fn(old_msgs)
         else:
-            # Basic fallback: concatenate last content from each
+            # No summarize_fn provided -- fall back to naive truncation of
+            # each message to 100 characters.  This is NOT a real summary;
+            # callers should supply a summarize_fn for production use.
+            logger.warning(
+                "SUMMARIZE strategy requested but no summarize_fn provided. "
+                "Falling back to truncation of %d older messages. "
+                "Provide a summarize_fn for proper summarization.",
+                len(old_msgs),
+            )
             parts = [m.get("content", "")[:100] for m in old_msgs]
             summary_text = f"[Summary of {len(old_msgs)} earlier messages: {'; '.join(parts)}]"
 

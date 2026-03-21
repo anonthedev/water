@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import BaseModel
@@ -16,6 +16,13 @@ class RiskLevel(IntEnum):
     MEDIUM = 2
     HIGH = 3
     CRITICAL = 4
+
+
+class TimeoutAction(str, Enum):
+    """Actions to take when an approval request times out."""
+    DENY = "deny"
+    APPROVE = "approve"
+    ESCALATE = "escalate"
 
 
 class ApprovalDenied(Exception):
@@ -35,7 +42,7 @@ class ApprovalPolicy:
     """Policy controlling how approval gates behave."""
     auto_approve_below: RiskLevel = RiskLevel.LOW
     timeout: float = 300.0
-    timeout_action: str = "deny"  # "deny", "approve", "escalate"
+    timeout_action: TimeoutAction = TimeoutAction.DENY
     escalation_channel: Optional[str] = None
     require_reason: bool = False
     max_auto_approvals: Optional[int] = None  # None = unlimited
@@ -118,15 +125,15 @@ class ApprovalGate:
         except asyncio.TimeoutError:
             # Handle timeout according to policy
             del self._pending[request_id]
-            if self.policy.timeout_action == "approve":
+            if self.policy.timeout_action == TimeoutAction.APPROVE:
                 request.status = "approved"
                 request.decided_by = "timeout"
                 return request
-            elif self.policy.timeout_action == "escalate":
+            elif self.policy.timeout_action == TimeoutAction.ESCALATE:
                 request.status = "escalated"
                 request.decided_by = "timeout"
                 return request
-            else:  # "deny" is the default
+            else:  # TimeoutAction.DENY is the default
                 request.status = "timed_out"
                 request.decided_by = "timeout"
                 raise ApprovalDenied(

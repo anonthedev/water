@@ -594,6 +594,11 @@ class ExecutionEngine:
         task = node["task"]
         max_iterations: int = node.get("max_iterations", 100)
 
+        if max_iterations <= 0:
+            raise ValueError(
+                f"max_iterations must be greater than 0, got {max_iterations}"
+            )
+
         iteration_count: int = 0
         current_data: OutputData = data
 

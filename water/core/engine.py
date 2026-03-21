@@ -50,6 +50,10 @@ class ExecutionEngine:
     via an optional storage backend.
     """
 
+    # Lock to prevent race conditions when checking and modifying flow state
+    # during pause/stop operations.
+    _flow_state_lock = asyncio.Lock()
+
     @staticmethod
     async def run(
         execution_graph: ExecutionGraph,
@@ -145,36 +149,37 @@ class ExecutionEngine:
             for node_index in range(start_index, len(execution_graph)):
                 # Check for pause/stop signals before each node
                 if storage:
-                    session = await storage.get_session(context.execution_id)
-                    if session and session.status == FlowStatus.PAUSED:
-                        # Save current state for resume
-                        session.current_node_index = node_index
-                        session.current_data = data
-                        session.context_state = {
-                            "task_outputs": context._task_outputs,
-                            "step_history": context._step_history,
-                            "step_number": context.step_number,
-                            "flow_version": context.flow_metadata.get("_flow_version"),
-                        }
-                        await storage.save_session(session)
-                        raise FlowPausedError(
-                            f"Flow {flow_id} paused at node {node_index} "
-                            f"(execution: {context.execution_id})"
-                        )
-                    elif session and session.status == FlowStatus.STOPPED:
-                        session.current_node_index = node_index
-                        session.current_data = data
-                        session.context_state = {
-                            "task_outputs": context._task_outputs,
-                            "step_history": context._step_history,
-                            "step_number": context.step_number,
-                            "flow_version": context.flow_metadata.get("_flow_version"),
-                        }
-                        await storage.save_session(session)
-                        raise FlowStoppedError(
-                            f"Flow {flow_id} stopped at node {node_index} "
-                            f"(execution: {context.execution_id})"
-                        )
+                    async with ExecutionEngine._flow_state_lock:
+                        session = await storage.get_session(context.execution_id)
+                        if session and session.status == FlowStatus.PAUSED:
+                            # Save current state for resume
+                            session.current_node_index = node_index
+                            session.current_data = data
+                            session.context_state = {
+                                "task_outputs": context._task_outputs,
+                                "step_history": context._step_history,
+                                "step_number": context.step_number,
+                                "flow_version": context.flow_metadata.get("_flow_version"),
+                            }
+                            await storage.save_session(session)
+                            raise FlowPausedError(
+                                f"Flow {flow_id} paused at node {node_index} "
+                                f"(execution: {context.execution_id})"
+                            )
+                        elif session and session.status == FlowStatus.STOPPED:
+                            session.current_node_index = node_index
+                            session.current_data = data
+                            session.context_state = {
+                                "task_outputs": context._task_outputs,
+                                "step_history": context._step_history,
+                                "step_number": context.step_number,
+                                "flow_version": context.flow_metadata.get("_flow_version"),
+                            }
+                            await storage.save_session(session)
+                            raise FlowStoppedError(
+                                f"Flow {flow_id} stopped at node {node_index} "
+                                f"(execution: {context.execution_id})"
+                            )
 
                 node = execution_graph[node_index]
                 data = await ExecutionEngine._execute_node(
@@ -611,33 +616,34 @@ class ExecutionEngine:
             # Check for pause/stop signals during loops
             if storage:
                 from water.storage import FlowStatus
-                session = await storage.get_session(context.execution_id)
-                if session and session.status == FlowStatus.PAUSED:
-                    session.current_node_index = node_index
-                    session.current_data = current_data
-                    session.context_state = {
-                        "task_outputs": context._task_outputs,
-                        "step_history": context._step_history,
-                        "step_number": context.step_number,
-                    }
-                    await storage.save_session(session)
-                    raise FlowPausedError(
-                        f"Flow paused during loop at node {node_index}, "
-                        f"iteration {iteration_count}"
-                    )
-                elif session and session.status == FlowStatus.STOPPED:
-                    session.current_node_index = node_index
-                    session.current_data = current_data
-                    session.context_state = {
-                        "task_outputs": context._task_outputs,
-                        "step_history": context._step_history,
-                        "step_number": context.step_number,
-                    }
-                    await storage.save_session(session)
-                    raise FlowStoppedError(
-                        f"Flow stopped during loop at node {node_index}, "
-                        f"iteration {iteration_count}"
-                    )
+                async with ExecutionEngine._flow_state_lock:
+                    session = await storage.get_session(context.execution_id)
+                    if session and session.status == FlowStatus.PAUSED:
+                        session.current_node_index = node_index
+                        session.current_data = current_data
+                        session.context_state = {
+                            "task_outputs": context._task_outputs,
+                            "step_history": context._step_history,
+                            "step_number": context.step_number,
+                        }
+                        await storage.save_session(session)
+                        raise FlowPausedError(
+                            f"Flow paused during loop at node {node_index}, "
+                            f"iteration {iteration_count}"
+                        )
+                    elif session and session.status == FlowStatus.STOPPED:
+                        session.current_node_index = node_index
+                        session.current_data = current_data
+                        session.context_state = {
+                            "task_outputs": context._task_outputs,
+                            "step_history": context._step_history,
+                            "step_number": context.step_number,
+                        }
+                        await storage.save_session(session)
+                        raise FlowStoppedError(
+                            f"Flow stopped during loop at node {node_index}, "
+                            f"iteration {iteration_count}"
+                        )
 
             current_data = await ExecutionEngine._execute_task(
                 task, current_data, context, storage, node_index, hooks, event_emitter, telemetry, middleware, dlq

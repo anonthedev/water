@@ -27,6 +27,7 @@ class NodeType(Enum):
     LOOP = "loop"
     MAP = "map"
     DAG = "dag"
+    TRY_CATCH = "try_catch"
 
 
 class FlowPausedError(Exception):
@@ -240,6 +241,7 @@ class ExecutionEngine:
             NodeType.LOOP: ExecutionEngine._execute_loop,
             NodeType.MAP: ExecutionEngine._execute_map,
             NodeType.DAG: ExecutionEngine._execute_dag,
+            NodeType.TRY_CATCH: ExecutionEngine._execute_try_catch,
         }
 
         handler = handlers.get(node_type)
@@ -778,3 +780,114 @@ class ExecutionEngine:
             raise ValueError("DAG has circular dependencies -- not all tasks completed")
 
         return results
+
+    @staticmethod
+    async def _execute_try_catch(
+        node: Dict[str, Any],
+        data: InputData,
+        context: ExecutionContext,
+        storage: Optional[Any] = None,
+        node_index: int = 0,
+        hooks: Optional[Any] = None,
+        event_emitter: Optional[Any] = None,
+        telemetry: Optional[Any] = None,
+        middleware: Optional[List[Any]] = None,
+        dlq: Optional[Any] = None,
+    ) -> OutputData:
+        """
+        Execute a try-catch-finally block.
+
+        The node must have a 'tasks' key (list of tasks for the try block),
+        and optionally 'catch_handler' and 'finally_handler' in the 'config' dict.
+
+        - Executes all try tasks sequentially.
+        - If any try task raises, the catch_handler is invoked (if provided)
+          with the error info injected into data as '_error' and '_error_type'.
+        - The finally_handler always runs regardless of success or failure.
+        - Returns the try result on success, or the catch result on failure.
+        """
+        try_tasks = node.get("tasks") or []
+        if not try_tasks:
+            single = node.get("task")
+            if single is not None:
+                try_tasks = [single]
+
+        config = node.get("config", {})
+        catch_handler = config.get("catch_handler")
+        finally_handler = config.get("finally_handler")
+        wrapped_nodes = config.get("_wrapped_nodes")
+
+        result = data
+        error_occurred = False
+        caught_error = None
+
+        # --- Try block ---
+        try:
+            current_data = data
+            if wrapped_nodes:
+                # on_error mode: replay the original execution nodes
+                for wrapped_node in wrapped_nodes:
+                    current_data = await ExecutionEngine._execute_node(
+                        wrapped_node, current_data, context, storage, node_index,
+                        hooks, event_emitter, telemetry, middleware, dlq
+                    )
+            else:
+                for task in try_tasks:
+                    current_data = await ExecutionEngine._execute_task(
+                        task, current_data, context, storage, node_index,
+                        hooks, event_emitter, telemetry, middleware, dlq
+                    )
+            result = current_data
+
+        except Exception as e:
+            error_occurred = True
+            caught_error = e
+
+            # --- Catch block ---
+            if catch_handler is not None:
+                error_data = {
+                    **data,
+                    "_error": str(e),
+                    "_error_type": type(e).__name__,
+                    "_error_obj": e,
+                }
+                if callable(catch_handler) and not hasattr(catch_handler, "execute"):
+                    # Plain callable: catch_handler(error, context) -> Dict
+                    catch_result = catch_handler(e, context)
+                    if inspect.isawaitable(catch_result):
+                        catch_result = await catch_result
+                    result = catch_result if isinstance(catch_result, dict) else error_data
+                else:
+                    # Task-based catch handler
+                    result = await ExecutionEngine._execute_task(
+                        catch_handler, error_data, context, storage, node_index,
+                        hooks, event_emitter, telemetry, middleware, dlq
+                    )
+            else:
+                # No catch handler — re-raise after finally
+                pass
+
+        # --- Finally block ---
+        finally:
+            if finally_handler is not None:
+                finally_data = {**result} if isinstance(result, dict) else dict(data)
+                finally_data["_try_success"] = not error_occurred
+                if caught_error is not None:
+                    finally_data["_error"] = str(caught_error)
+                    finally_data["_error_type"] = type(caught_error).__name__
+
+                if callable(finally_handler) and not hasattr(finally_handler, "execute"):
+                    finally_result = finally_handler(finally_data, context)
+                    if inspect.isawaitable(finally_result):
+                        await finally_result
+                else:
+                    await ExecutionEngine._execute_task(
+                        finally_handler, finally_data, context, storage, node_index,
+                        hooks, event_emitter, telemetry, middleware, dlq
+                    )
+
+        # If error occurred and no catch handler, re-raise
+        if error_occurred and catch_handler is None:
+            raise caught_error
+
+        return result

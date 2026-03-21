@@ -335,6 +335,109 @@ class Flow:
         self._tasks.append(node)
         return self
 
+    def try_catch(self, try_tasks, catch_handler=None, finally_handler=None) -> 'Flow':
+        """
+        Add try-catch-finally error handling to the flow.
+
+        Args:
+            try_tasks: List of tasks or single task to execute in try block
+            catch_handler: Optional task or callable(error, context) -> Dict to handle errors
+            finally_handler: Optional task to always execute after try/catch
+
+        Returns:
+            Self for method chaining
+
+        Raises:
+            RuntimeError: If flow is already registered
+            ValueError: If try_tasks is empty or None
+        """
+        self._validate_registration_state()
+
+        # Normalize to list
+        if not isinstance(try_tasks, list):
+            try_tasks = [try_tasks]
+
+        if not try_tasks:
+            raise ValueError("try_tasks cannot be empty")
+
+        coerced_tasks = [self._coerce_task(t) for t in try_tasks]
+        for task in coerced_tasks:
+            self._validate_task(task)
+
+        # Coerce catch/finally handlers if they are Tasks/Flows
+        if catch_handler is not None:
+            if hasattr(catch_handler, "execute"):
+                catch_handler = self._coerce_task(catch_handler)
+            elif not callable(catch_handler):
+                raise ValueError("catch_handler must be a task or callable")
+
+        if finally_handler is not None:
+            if hasattr(finally_handler, "execute"):
+                finally_handler = self._coerce_task(finally_handler)
+            elif not callable(finally_handler):
+                raise ValueError("finally_handler must be a task or callable")
+
+        node: ExecutionNode = {
+            "type": NodeType.TRY_CATCH.value,
+            "tasks": coerced_tasks,
+            "task": coerced_tasks[0] if len(coerced_tasks) == 1 else None,
+            "config": {
+                "catch_handler": catch_handler,
+                "finally_handler": finally_handler,
+            },
+        }
+        self._tasks.append(node)
+        return self
+
+    def on_error(self, handler) -> 'Flow':
+        """
+        Set a global error handler for the flow.
+
+        Wraps all currently added tasks in a try-catch block with the given
+        handler as the catch_handler. Must be called after adding tasks but
+        before register().
+
+        Args:
+            handler: A task or callable(error, context) -> Dict to handle any error
+
+        Returns:
+            Self for method chaining
+
+        Raises:
+            RuntimeError: If flow is already registered
+            ValueError: If handler is None or no tasks exist to wrap
+        """
+        self._validate_registration_state()
+        if handler is None:
+            raise ValueError("Error handler cannot be None")
+        if not self._tasks:
+            raise ValueError("No tasks to wrap with error handler")
+
+        if hasattr(handler, "execute"):
+            handler = self._coerce_task(handler)
+
+        # Collect all existing task nodes as try_tasks for a single TRY_CATCH wrapper.
+        # We rebuild the flow graph as a single try-catch node wrapping the originals.
+        existing_tasks = list(self._tasks)
+        self._tasks.clear()
+
+        # Build an inner execution list — we store the original nodes and
+        # the engine will run them sequentially inside the try block.
+        # To keep it simple, we store the original nodes in config and
+        # re-use the engine's existing node dispatch.
+        node: ExecutionNode = {
+            "type": NodeType.TRY_CATCH.value,
+            "tasks": [],
+            "task": None,
+            "config": {
+                "catch_handler": handler,
+                "finally_handler": None,
+                "_wrapped_nodes": existing_tasks,
+            },
+        }
+        self._tasks.append(node)
+        return self
+
     def as_task(
         self,
         input_schema: Optional[Type[BaseModel]] = None,

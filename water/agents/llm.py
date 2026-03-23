@@ -252,14 +252,24 @@ def _normalize_usage(raw_usage: Any) -> Optional[Dict[str, int]]:
     """
     if raw_usage is None:
         return None
+        
     if isinstance(raw_usage, dict):
+        in_t = raw_usage.get("input_tokens")
+        out_t = raw_usage.get("output_tokens")
         return {
-            "input_tokens": raw_usage.get("input_tokens") or raw_usage.get("prompt_tokens", 0),
-            "output_tokens": raw_usage.get("output_tokens") or raw_usage.get("completion_tokens", 0),
+            "input_tokens": in_t if in_t is not None else raw_usage.get("prompt_tokens", 0),
+            "output_tokens": out_t if out_t is not None else raw_usage.get("completion_tokens", 0),
         }
+        
     # SDK objects (e.g. openai.types.CompletionUsage, anthropic.types.Usage)
-    input_t = getattr(raw_usage, "input_tokens", None) or getattr(raw_usage, "prompt_tokens", 0)
-    output_t = getattr(raw_usage, "output_tokens", None) or getattr(raw_usage, "completion_tokens", 0)
+    input_t = getattr(raw_usage, "input_tokens", None)
+    if input_t is None:
+        input_t = getattr(raw_usage, "prompt_tokens", 0)
+        
+    output_t = getattr(raw_usage, "output_tokens", None)
+    if output_t is None:
+        output_t = getattr(raw_usage, "completion_tokens", 0)
+        
     return {"input_tokens": input_t, "output_tokens": output_t}
 
 
